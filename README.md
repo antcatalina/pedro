@@ -31,7 +31,7 @@ The idea that makes Pedro work: **the compiler is Claude, and this repository is
 ```pedro
 target: python
 
-task greet(name: text) -> text:
+task greet(name: text) returns text:
     return "Hello, {name}!"
 ```
 
@@ -56,14 +56,14 @@ record LineItem:
     price: number
     quantity: whole
 
-task order_total(items: list of LineItem, discount_percent: number) -> number:
+task order_total(items: list of LineItem, discount_percent: number) returns number:
     let subtotal = 0
     for each item in items:
-        subtotal = subtotal + item.price * item.quantity
+        increase subtotal by item.price * item.quantity
 
-    when subtotal > 100:
+    when subtotal is greater than 100:
         # free-shipping tier gets an extra 5% off
-        discount_percent = discount_percent + 5
+        increase discount_percent by 5
 
     let discount = subtotal * discount_percent / 100
     return subtotal - discount
@@ -90,11 +90,11 @@ class LineItem:
 def order_total(items: list[LineItem], discount_percent: float) -> float:
     subtotal = 0.0
     for item in items:
-        subtotal = subtotal + item.price * item.quantity
+        subtotal += item.price * item.quantity
 
     if subtotal > 100:
         # free-shipping tier gets an extra 5% off
-        discount_percent = discount_percent + 5
+        discount_percent += 5
 
     discount = subtotal * discount_percent / 100
     return subtotal - discount
@@ -113,12 +113,12 @@ interface LineItem {
 function orderTotal(items: LineItem[], discountPercent: number): number {
   let subtotal = 0;
   for (const item of items) {
-    subtotal = subtotal + item.price * item.quantity;
+    subtotal += item.price * item.quantity;
   }
 
   if (subtotal > 100) {
     // free-shipping tier gets an extra 5% off
-    discountPercent = discountPercent + 5;
+    discountPercent += 5;
   }
 
   const discount = (subtotal * discountPercent) / 100;
@@ -127,6 +127,8 @@ function orderTotal(items: LineItem[], discountPercent: number): number {
 ```
 
 Notice the compiler converts `snake_case` names to the target's convention (`orderTotal`, `discountPercent`) while preserving meaning.
+
+> **More examples:** [`docs/cookbook.md`](docs/cookbook.md) implements 22 classic algorithms in Pedro — math, strings, searching, sorting, recursion, dynamic programming, and graphs — each with an `expect` block, and every one machine-verified.
 
 ---
 
@@ -167,7 +169,7 @@ Every program starts with directives (before the first declaration):
 
 ```pedro
 let total = 0        # declare
-total = total + 5    # reassign
+total = total + 5    # reassign  (or: `increase total by 5`)
 ```
 
 Pedro identifiers are written in `snake_case`; the compiler converts them to the target language's convention.
@@ -185,20 +187,41 @@ nothing                   # the empty value
 
 ### Operators
 
-- **Arithmetic:** `+ - * /`, `mod` (remainder)
+- **Arithmetic:** `+ - * /`, `div` (whole-number division), `mod` (remainder)
 - **Comparison:** `== != < <= > >=`
 - **Logic:** `and`, `or`, `not`
 - **Membership:** `x in items`, `x not in items`
 - **Presence:** `x is present`, `x is empty`, `x is nothing`
 
+### Readable forms
+
+Many constructs have a plain-English form that compiles **identically** to its symbolic form — write whichever reads better in context:
+
+| Readable form            | Same as        | Meaning                                   |
+|--------------------------|----------------|-------------------------------------------|
+| `increase x by n`        | `x = x + n`    | add in place                              |
+| `decrease x by n`        | `x = x - n`    | subtract in place                         |
+| `set x to v`             | `x = v`        | reassign a variable                       |
+| `a is b`                 | `a == b`       | equals                                    |
+| `a is not b`             | `a != b`       | not equal                                 |
+| `a is greater than b`    | `a > b`        |                                           |
+| `a is less than b`       | `a < b`        |                                           |
+| `a is at least b`        | `a >= b`       |                                           |
+| `a is at most b`         | `a <= b`       |                                           |
+| `value as text`          | `str(value)`   | convert (also `as whole`, `as number`)    |
+
+Because each form has a single canonical meaning, readability costs nothing in determinism: `increase total by 1` and `total = total + 1` compile to the same code.
+
 ### Tasks (functions)
 
+A task declares its return type after `returns`:
+
 ```pedro
-task discount(price: number, percent: number = 0) -> number:
+task discount(price: number, percent: number = 0) returns number:
     return price - price * percent / 100
 ```
 
-Parameters may have defaults. Return with `return <expr>` (or a bare `return`). A task whose return type is `nothing` needn't return a value.
+Parameters may have defaults. Return a value with `return <expr>` (or a bare `return`). A task with no `returns` clause returns `nothing` and needn't return a value.
 
 ### Records and enums
 
@@ -224,9 +247,9 @@ let s = Status.active
 ### Conditionals
 
 ```pedro
-when score >= 90:
+when score is at least 90:
     return "A"
-when score >= 80:          # additional branch, like else-if
+when score is at least 80:     # additional branch, like else-if
     return "B"
 otherwise:
     return "C"
@@ -246,7 +269,7 @@ for each index, item in items:   # with 0-based position
 repeat 3 times:
     ...
 
-while remaining > 0:
+while remaining is greater than 0:
     ...
 ```
 
@@ -280,14 +303,16 @@ on failure as err:
 Readable expressions that compile to the target's idioms (comprehensions, filters, LINQ, …):
 
 ```pedro
-find one user in users where user.email == email      # first match, or nothing
-filter user in users where user.age >= 18             # list of matches
+find one user in users where user.email is email      # first match, or nothing
+filter user in users where user.age is at least 18    # list of matches
 count user in users where user.active                 # a whole number
 collect user.email for each user in users             # map / comprehension → list
 sort users by created_at descending
 sum of item.price for each item in cart
 first of items        last of items
 ```
+
+A fuller set of list, map, text, and range operations — used throughout the cookbook — is documented in [`docs/cookbook.md`](docs/cookbook.md).
 
 ### Capabilities — talking to the outside world
 
@@ -320,7 +345,7 @@ Capability calls compile to a small, pluggable **adapter layer** (one per projec
 ### Modules
 
 ```pedro
-use "lib/money.pedro"                 # import a file's tasks, records, enums
+use "lib/money.pedro"                   # import a file's tasks, records, enums
 use round_cents from "lib/money.pedro"  # import selectively
 ```
 
@@ -394,6 +419,7 @@ To make this repeatable in Claude Code, we'll ship a **skill** (`skills/compile-
 pedro/
 ├── README.md              # this file — overview + language guide
 ├── docs/
+│   ├── cookbook.md        # 22 algorithms in Pedro, every one machine-verified
 │   ├── SPEC.md            # normative spec / the compiler contract   (planned)
 │   └── grammar.md         # formal grammar sketch                    (planned)
 ├── examples/
@@ -405,7 +431,7 @@ pedro/
 
 ## Roadmap
 
-- **v0.1 (now)** — Language design, this README, first examples.
+- **v0.1 (now)** — Language design, this README, the algorithm cookbook, first examples.
 - **v0.2** — `docs/SPEC.md`: the full normative spec with the canonical translation table for every construct.
 - **v0.3** — Claude Code skill that compiles `.pedro` files on command.
 - **v0.4** — A test harness that round-trips every example through the compiler and checks its `expect` blocks.

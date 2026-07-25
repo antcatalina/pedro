@@ -7,14 +7,14 @@ record LineItem:
     price: number
     quantity: whole
 
-task order_total(items: list of LineItem, discount_percent: number) -> number:
+task order_total(items: list of LineItem, discount_percent: number) returns number:
     let subtotal = 0
     for each item in items:
-        subtotal = subtotal + item.price * item.quantity
+        increase subtotal by item.price * item.quantity
 
-    when subtotal > 100:
+    when subtotal is greater than 100:
         # free-shipping tier gets an extra 5% off
-        discount_percent = discount_percent + 5
+        increase discount_percent by 5
 
     let discount = subtotal * discount_percent / 100
     return subtotal - discount

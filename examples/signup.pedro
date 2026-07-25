@@ -11,11 +11,11 @@ record User:
     email: text
     password: text
 
-task sign_up(email: text, password: text) -> text:
+task sign_up(email: text, password: text) returns text:
     when email is not a valid email:
         fail with "invalid email"
 
-    let existing = find one user in users where user.email == email
+    let existing = find one user in users where user.email is email
     when existing is present:
         fail with "email already registered"
 
