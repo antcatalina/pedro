@@ -1,0 +1,33 @@
+# Collection helpers. Compiled and checked by pedroc.
+target: python
+
+task maximum(items: list of whole) returns whole:
+    when items is empty:
+        fail with "cannot take the maximum of an empty list"
+    let best = first of items
+    for each item in items:
+        when item is greater than best:
+            best = item
+    return best
+
+expect:
+    maximum([3, 7, 2, 9, 4]) == 9
+    maximum([]) fails with "cannot take the maximum of an empty list"
+
+task average(items: list of number) returns number:
+    when items is empty:
+        return 0
+    return (sum of item for each item in items) / (count of items)
+
+expect:
+    average([2, 4, 6]) == 4
+
+task unique(items: list of whole) returns list of whole:
+    let seen = []
+    for each item in items:
+        when item not in seen:
+            add item to seen
+    return seen
+
+expect:
+    unique([1, 2, 2, 3, 3, 3]) == [1, 2, 3]

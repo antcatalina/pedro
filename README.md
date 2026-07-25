@@ -1,18 +1,21 @@
 # Pedro
 
-**A human-readable language you write, and Claude compiles into the programming language of your choice.**
+**A small, human-readable language for intent. Claude writes it from your plain-English request; a real compiler (`pedroc`) turns it into the programming language of your choice.**
 
-> **Status:** v0.1 — draft. The language is *defined by this repository*; Claude reads it and acts as the compiler.
+> **Status:** v0.1. `pedroc` deterministically compiles the scalar/list/map subset — the entire [cookbook](docs/cookbook.md) (22 algorithms) — to Python. Design rationale: [docs/design-for-llms.md](docs/design-for-llms.md). Progress log: [WORKLOG.md](WORKLOG.md).
 
-Pedro is a small, structured, easy-to-read language for describing **what a program should do**. You write your intent in clear, keyworded pseudocode, tag a target language (`target: python`, `target: typescript`, …), and Claude reads the Pedro spec plus your source and compiles it into idiomatic code in that language.
+Pedro is the **verifiable intermediate language between natural-language intent and executable code.** You (or Claude) write clear, keyworded pseudocode and tag a target (`target: python`, …); `pedroc` compiles it to idiomatic code. The design splits one job into two:
 
-The idea that makes Pedro work: **the compiler is Claude, and this repository is the compiler's specification.** There is no separate binary to install (yet). Because Claude learns Pedro from the spec *in-context* every session, the spec has to be precise, example-dense, and written for Claude as its primary reader — which is exactly what this repo is built to be.
+- **plain English → Pedro** is fuzzy and creative — that's **Claude's** job (the *authoring layer*).
+- **Pedro → code** is exact and mechanical — that's **`pedroc`'s** job (a real, deterministic compiler; **no LLM in the pipeline**).
+
+Putting the LLM where fuzziness is a feature and a real compiler where correctness is non-negotiable is what makes Pedro reliable — and what makes it a good language *for* LLMs: the model emits Pedro, runs `pedroc check`, and self-corrects from structured feedback.
 
 ```
-   your_app.pedro  ─┐
-                     ├─▶  Claude  ──▶  your_app.py   (or .ts, .go, .java, …)
-   docs/SPEC.md    ─┘   (compiler)
-   (the language spec)
+   plain English  ─▶  Claude   ─▶  your_app.pedro  ─▶  pedroc   ─▶  your_app.py
+   (what you want)   (authoring)   (verifiable IR)    (compiler)   (or .ts, .go, …)
+                                          │
+                                     expect blocks ─▶ run ─▶ pass / fail  (self-correction)
 ```
 
 ---
@@ -128,7 +131,7 @@ function orderTotal(items: LineItem[], discountPercent: number): number {
 
 Notice the compiler converts `snake_case` names to the target's convention (`orderTotal`, `discountPercent`) while preserving meaning.
 
-> **More examples:** [`docs/cookbook.md`](docs/cookbook.md) implements 22 classic algorithms in Pedro — math, strings, searching, sorting, recursion, dynamic programming, and graphs — each with an `expect` block, and every one machine-verified.
+> **What `pedroc` compiles today:** the scalar/list/map subset — the entire [cookbook](docs/cookbook.md) (22 algorithms across math, strings, search, sorting, recursion, DP, and graphs) to Python, each verified by running (`tools/regress.py`). The `record` type and the TypeScript output shown above are part of the language *design*, not yet in the compiler; [WORKLOG.md](WORKLOG.md) tracks coverage.
 
 ---
 
@@ -386,7 +389,14 @@ A small standard library of readable predicates the compiler implements consiste
 
 ## The compiler contract
 
-This is the part that makes Pedro reliable. When Claude compiles a `.pedro` file, it **must** follow these rules:
+> **Note:** now that `pedroc` is a real compiler, this contract has split in two.
+> Rules about idiomatic output, canonical translation, and determinism are
+> **`pedroc` guarantees**; rules about resolving ambiguity and not inventing
+> capabilities are **authoring-layer guidelines** for Claude writing Pedro (see
+> [docs/design-for-llms.md](docs/design-for-llms.md)). The rules below describe the
+> intended end-to-end behavior.
+
+This is the part that makes Pedro reliable. When a `.pedro` file is compiled, the toolchain **must** honor these rules:
 
 1. **The spec is normative.** `docs/SPEC.md` (and this README) define the language. Compile to match it — don't guess.
 2. **Emit idiomatic target code.** Follow the target language's conventions: naming (`snake_case` for Python, `camelCase` for TS, etc.), standard library, and formatting. Convert Pedro identifiers to the target convention while preserving meaning.
@@ -401,15 +411,21 @@ This is the part that makes Pedro reliable. When Claude compiles a `.pedro` file
 
 ---
 
-## Using Pedro with Claude today
+## Using Pedro today
 
-There's no standalone compiler binary yet — **Claude is the compiler.** The workflow:
+`pedroc` is a real compiler — run it from the terminal (Python 3.11+, no dependencies):
 
-1. Keep `docs/SPEC.md` in your project (it's the normative contract).
-2. Write your program, e.g. `app.pedro`, with a `target:` line.
-3. Ask Claude: *"Compile `app.pedro` to its target, following `docs/SPEC.md`."*
+```
+# compile Pedro to Python
+PYTHONPATH=. python -m pedroc build examples/cookbook/numbers.pedro -o build/numbers.py
 
-To make this repeatable in Claude Code, we'll ship a **skill** (`skills/compile-pedro/`) that loads the spec and turns Claude into the Pedro compiler on demand. Later, a thin CLI (`pedroc build app.pedro`) can call the Claude API with the spec attached so builds run from the terminal.
+# check it: compile, run its expect blocks, report per-assertion pass/fail
+PYTHONPATH=. python -m pedroc check examples/cookbook/numbers.pedro --json
+```
+
+`check` is the oracle for the authoring loop: emit Pedro → `check` → read the JSON (`errors`, `holes`, and failing `expectations` with `got X, expected Y`) → fix. The **authoring layer** — turning a plain-English request into Pedro and driving that loop — is the Claude Code skill in `skills/write-pedro/`; the compact spec it reads is [docs/language-card.md](docs/language-card.md).
+
+**Coverage today:** the whole cookbook (scalars, lists, maps, control flow, recursion, and the collection operations). `record` types and capabilities are designed (see the language guide) but not yet in the compiler — see [WORKLOG.md](WORKLOG.md).
 
 ---
 
@@ -417,26 +433,29 @@ To make this repeatable in Claude Code, we'll ship a **skill** (`skills/compile-
 
 ```
 pedro/
-├── README.md              # this file — overview + language guide
+├── README.md              # overview + language guide
+├── WORKLOG.md             # dated change log + next steps
+├── pedroc/                # the real compiler: lexer, parser, codegen, check, CLI
 ├── docs/
-│   ├── cookbook.md        # 22 algorithms in Pedro, every one machine-verified
-│   ├── SPEC.md            # normative spec / the compiler contract   (planned)
-│   └── grammar.md         # formal grammar sketch                    (planned)
+│   ├── design-for-llms.md # why Pedro is shaped this way (the strategy)
+│   ├── language-card.md   # compact in-context spec for the authoring LLM
+│   ├── cookbook.md        # 22 algorithms, all compiled + checked by pedroc
+│   └── SPEC.md            # normative spec                            (planned)
 ├── examples/
-│   ├── order_total.pedro  # pure logic, compiled to Python & TypeScript
-│   └── signup.pedro       # capabilities: database, email, crypto
-├── skills/                # Claude Code skill that compiles Pedro    (planned)
-└── pedroc/                # CLI compiler over the Claude API          (planned)
+│   ├── math.pedro         # integer algorithms
+│   ├── cookbook/          # the 22 cookbook algorithms as .pedro (regression corpus)
+│   ├── order_total.pedro  # uses records       (language-designed; not yet compiled)
+│   └── signup.pedro       # uses capabilities   (language-designed; not yet compiled)
+├── skills/write-pedro/    # the Claude Code authoring skill (NL -> Pedro)
+└── tools/regress.py       # compiles + checks the whole corpus
 ```
 
 ## Roadmap
 
-- **v0.1 (now)** — Language design, this README, the algorithm cookbook, first examples.
-- **v0.2** — `docs/SPEC.md`: the full normative spec with the canonical translation table for every construct.
-- **v0.3** — Claude Code skill that compiles `.pedro` files on command.
-- **v0.4** — A test harness that round-trips every example through the compiler and checks its `expect` blocks.
-- **v0.5** — `pedroc` CLI wrapping the Claude API.
-- **v1.0** — Stable syntax, multi-target coverage (Python, TypeScript, Go, Java, …), a documented adapter layer for capabilities.
+Live status and next steps live in [WORKLOG.md](WORKLOG.md). In brief:
+
+- **Done** — the language design; a real deterministic compiler (`pedroc`) for the scalar/list/map subset → Python; the `pedroc check` loop, typed holes, and structured diagnostics; the [cookbook](docs/cookbook.md) (22 algorithms) as a passing regression suite (`tools/regress.py`).
+- **Next** — `record` types; capabilities + the adapter layer (unlocks "auditable by construction"); a TypeScript backend; sandboxing `check`; then `docs/SPEC.md`.
 
 ## Design principles
 
@@ -449,13 +468,13 @@ pedro/
 
 ## FAQ
 
-**Is the output really deterministic?** Not bit-for-bit guaranteed — Claude is a probabilistic compiler. But the contract, the structured syntax, and `expect` blocks push variance down hard and catch drift when it happens.
+**Is the output really deterministic?** Yes for `pedroc` — the same source yields byte-identical output every run; it's an ordinary compiler. The probabilistic step is *authoring* (English → Pedro, done by Claude), which is exactly why the `pedroc check` loop and `expect` blocks exist: to catch and correct authoring mistakes against a real oracle.
 
 **Why not just prompt Claude to write the code directly?** Pedro gives you a stable, reviewable, version-controllable source of truth that's shorter than code, target-language-independent, and re-compilable — instead of a one-off prompt whose output you can't diff or reproduce.
 
 **Do I need to fine-tune Claude?** No. Pedro is taught entirely in-context via the spec.
 
-**Which languages can it target?** Any language Claude writes well — Python, TypeScript/JavaScript, Go, Java, C#, Ruby, Rust, and more. Start with one; the same source retargets.
+**Which languages can it target?** `pedroc` emits **Python** today; TypeScript is the next backend (the AST is target-agnostic, so retargeting is a codegen module, not a rewrite). The design supports any language a backend is written for.
 
 **Can Claude read Pedro as well as write it?** Yes — Pedro is designed to be equally clear to humans and to Claude, so you can also hand Claude a `.pedro` file and ask it to explain or extend the program.
 

@@ -8,8 +8,8 @@ Reports, as data:
 
 An LLM emits Pedro, runs this, reads the JSON, and fixes — instead of guessing.
 
-NOTE: this executes generated code in-process. That is fine for trusted local
-use, but must be sandboxed before running untrusted input. (Tracked in WORKLOG.)
+NOTE: this executes generated code in-process. Fine for trusted local use, but
+must be sandboxed before running untrusted input. (Tracked in WORKLOG.)
 """
 from .lexer import tokenize
 from .parser import Parser
@@ -32,7 +32,7 @@ def _collect_holes(program):
                     walk(body)
                 if s.orelse:
                     walk(s.orelse)
-            elif isinstance(s, (N.While, N.Repeat)):
+            elif isinstance(s, (N.While, N.Repeat, N.For)):
                 walk(s.body)
 
     for it in program.items:
@@ -71,7 +71,6 @@ def check(source, filename="<pedro>", target="python"):
         report["summary"] = f"target {target!r} is not runnable by `check` yet"
         return report
 
-    # Define the program's functions (the __main__ guard keeps asserts from firing).
     code = generate(program, filename)
     ns = {"__name__": "pedroc_check"}
     try:
@@ -81,25 +80,54 @@ def check(source, filename="<pedro>", target="python"):
         report["summary"] = "internal error while loading generated code"
         return report
 
+    pedro_error = ns.get("PedroError", Exception)
     n_pass = n_total = 0
     for it in program.items:
         if not isinstance(it, N.Expect):
             continue
-        for a in it.assertions:
+        for item in it.items:
+            kind = item[0]
+            if kind == "given":
+                try:
+                    ns[item[1]] = eval(_gen_expr(item[2]), ns)
+                except Exception as e:
+                    report["errors"].append({"line": 0, "code": "given-error", "message": str(e), "hint": None})
+                continue
+
             n_total += 1
-            expr = _gen_expr(a)
-            passed = False
-            detail = None
-            try:
-                passed = bool(eval(expr, ns))
-                if not passed and isinstance(a, N.BinOp) and a.op in _CMP:
-                    lv = eval(_gen_expr(a.left), ns)
-                    rv = eval(_gen_expr(a.right), ns)
-                    detail = f"got {lv!r}, expected {a.op} {rv!r}"
-            except Exception as e:
-                detail = f"error: {e}"
+            if kind == "assert":
+                a = item[1]
+                expr = _gen_expr(a)
+                passed = False
+                detail = None
+                try:
+                    passed = bool(eval(expr, ns))
+                    if not passed and isinstance(a, N.BinOp) and a.op in _CMP:
+                        lv = eval(_gen_expr(a.left), ns)
+                        rv = eval(_gen_expr(a.right), ns)
+                        detail = f"got {lv!r}, expected {a.op} {rv!r}"
+                except Exception as e:
+                    detail = f"error: {e}"
+                text = _strip_parens(expr)
+            else:  # fails
+                call = _gen_expr(item[1])
+                msg = item[2]
+                passed = False
+                detail = None
+                try:
+                    eval(call, ns)
+                    detail = f"expected failure {msg!r}, but it returned normally"
+                except pedro_error as e:
+                    if str(e) == msg:
+                        passed = True
+                    else:
+                        detail = f"failed with {str(e)!r}, expected {msg!r}"
+                except Exception as e:
+                    detail = f"raised {type(e).__name__}: {e}, expected failure {msg!r}"
+                text = f"{_strip_parens(call)} fails with {msg!r}"
+
             n_pass += 1 if passed else 0
-            report["expectations"].append({"text": _strip_parens(expr), "passed": passed, "detail": detail})
+            report["expectations"].append({"text": text, "passed": passed, "detail": detail})
 
     report["ok"] = (not report["errors"]) and (not report["holes"]) and (n_pass == n_total)
     parts = [f"{n_pass}/{n_total} expectations passed"]

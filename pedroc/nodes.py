@@ -1,7 +1,7 @@
 """AST node definitions for Pedro.
 
-Deliberately small and regular — one node per construct — so the language
-stays easy to reason about (and easy to describe to an LLM in-context).
+Small and regular — one node per construct — so the language stays easy to
+reason about (and easy to describe to an LLM in-context).
 """
 from dataclasses import dataclass
 from typing import Optional
@@ -19,13 +19,13 @@ class Program:
 class Task:
     name: str
     params: list         # list of (name, type, default_expr_or_None)
-    ret_type: Optional[str]
-    body: list           # list of statements
+    ret_type: object     # structured type (see parser._parse_type)
+    body: list
 
 
 @dataclass
 class Expect:
-    assertions: list     # list of expression nodes (each a comparison)
+    items: list          # list of ("given", name, expr) | ("assert", expr) | ("fails", expr, msg)
 
 
 # --- statements ---
@@ -33,6 +33,12 @@ class Expect:
 @dataclass
 class Assign:
     name: str
+    value: object
+
+
+@dataclass
+class SetLValue:
+    target: object       # an Index (or Attr) expression
     value: object
 
 
@@ -67,8 +73,29 @@ class Repeat:
 
 
 @dataclass
-class ExprStmt:
-    expr: object
+class For:
+    var: str
+    index: Optional[str]  # loop-position variable, or None
+    iterable: object
+    body: list
+
+
+@dataclass
+class Add:
+    value: object
+    target: object       # list expression to append to
+
+
+@dataclass
+class Swap:
+    i: object
+    j: object
+    target: object       # list expression
+
+
+@dataclass
+class Fail:
+    message: object
 
 
 @dataclass
@@ -76,6 +103,11 @@ class Todo:
     """A typed hole: `todo "<why>"`. First-class uncertainty for the author."""
     message: str
     line: int
+
+
+@dataclass
+class ExprStmt:
+    expr: object
 
 
 # --- expressions ---
@@ -113,6 +145,12 @@ class Attr:
 
 
 @dataclass
+class Index:
+    obj: object
+    index: object
+
+
+@dataclass
 class BinOp:
     op: str
     left: object
@@ -123,3 +161,36 @@ class BinOp:
 class Unary:
     op: str
     operand: object
+
+
+@dataclass
+class ListLit:
+    items: list
+
+
+@dataclass
+class MapLit:
+    pairs: list          # list of (key_expr, value_expr)
+
+
+@dataclass
+class Convert:
+    expr: object
+    to: str              # 'text' | 'whole' | 'number'
+
+
+@dataclass
+class Builtin:
+    """A keyword-led operation, e.g. `count of X`, `item at I in X`, `numbers from A to B`."""
+    name: str
+    args: list
+
+
+@dataclass
+class Comp:
+    """A comprehension: filter / collect / count / sum / find."""
+    kind: str
+    elem: object
+    var: str
+    coll: object
+    cond: Optional[object]

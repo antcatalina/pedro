@@ -1,0 +1,80 @@
+# Searching & sorting. Compiled and checked by pedroc.
+target: python
+
+task index_of(target: whole, items: list of whole) returns whole:
+    for each index, item in items:
+        when item is target:
+            return index
+    return -1
+
+expect:
+    index_of(30, [10, 20, 30, 40]) == 2
+    index_of(99, [10, 20, 30, 40]) == -1
+
+task binary_search(target: whole, sorted_items: list of whole) returns whole:
+    let low = 0
+    let high = (count of sorted_items) - 1
+    while low is at most high:
+        let mid = (low + high) div 2
+        let value = item at mid in sorted_items
+        when value is target:
+            return mid
+        when value is less than target:
+            low = mid + 1
+        otherwise:
+            high = mid - 1
+    return -1
+
+expect:
+    binary_search(30, [10, 20, 30, 40, 50]) == 2
+    binary_search(35, [10, 20, 30, 40, 50]) == -1
+
+task bubble_sort(items: list of whole) returns list of whole:
+    let result = copy of items
+    let n = count of result
+    repeat n times:
+        for each i in numbers from 0 to n - 2:
+            when (item at i in result) is greater than (item at i + 1 in result):
+                swap items at i and i + 1 in result
+    return result
+
+expect:
+    bubble_sort([3, 1, 2]) == [1, 2, 3]
+
+task quicksort(items: list of whole) returns list of whole:
+    when count of items is at most 1:
+        return items
+    let pivot = first of items
+    let rest = drop 1 from items
+    let smaller = filter x in rest where x is at most pivot
+    let larger = filter x in rest where x is greater than pivot
+    return quicksort(smaller) followed by [pivot] followed by quicksort(larger)
+
+expect:
+    quicksort([3, 1, 4, 1, 5, 9, 2, 6]) == [1, 1, 2, 3, 4, 5, 6, 9]
+
+task merge_sort(items: list of whole) returns list of whole:
+    when count of items is at most 1:
+        return items
+    let middle = (count of items) div 2
+    let left = merge_sort(take middle from items)
+    let right = merge_sort(drop middle from items)
+    return merge(left, right)
+
+task merge(left: list of whole, right: list of whole) returns list of whole:
+    let result = []
+    let i = 0
+    let j = 0
+    while i is less than (count of left) and j is less than (count of right):
+        let a = item at i in left
+        let b = item at j in right
+        when a is at most b:
+            add a to result
+            increase i by 1
+        otherwise:
+            add b to result
+            increase j by 1
+    return result followed by (drop i from left) followed by (drop j from right)
+
+expect:
+    merge_sort([5, 2, 4, 1, 3]) == [1, 2, 3, 4, 5]

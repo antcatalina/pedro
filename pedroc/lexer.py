@@ -9,7 +9,7 @@ Token = (type, value, line). Types:
 from .errors import PedroSyntaxError
 
 TWO_CHAR_OPS = {"==", "!=", "<=", ">="}
-SINGLE_OPS = set("()+-*/<>=:,.")
+SINGLE_OPS = set("()[]{}+-*/<>=:,.")
 
 
 def _strip_comment(line):

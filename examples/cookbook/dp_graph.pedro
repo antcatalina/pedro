@@ -1,0 +1,60 @@
+# Dynamic programming & graphs. Compiled and checked by pedroc.
+target: python
+
+task fibonacci_fast(n: whole) returns whole:
+    let cache = empty map of whole to whole
+    return fib_helper(n, cache)
+
+task fib_helper(n: whole, cache: map of whole to whole) returns whole:
+    when n is at most 1:
+        return n
+    when n in cache:
+        return cache[n]
+    let value = fib_helper(n - 1, cache) + fib_helper(n - 2, cache)
+    set cache[n] to value
+    return value
+
+expect:
+    fibonacci_fast(30) == 832040
+
+task min_coins(amount: whole, coins: list of whole) returns whole:
+    let unreachable = amount + 1
+    let best = [0]
+    for each value in numbers from 1 to amount:
+        let fewest = unreachable
+        for each coin in coins:
+            when coin is at most value:
+                let candidate = 1 + (item at (value - coin) in best)
+                when candidate is less than fewest:
+                    fewest = candidate
+        add fewest to best
+    let answer = item at amount in best
+    when answer is greater than amount:
+        return -1
+    return answer
+
+expect:
+    min_coins(11, [1, 2, 5]) == 3
+    min_coins(3, [2]) == -1
+
+task shortest_hops(graph: map of text to list of text, start: text, goal: text) returns whole:
+    let frontier = [start]
+    let visited = [start]
+    let distance = 0
+    while frontier is not empty:
+        let next_frontier = []
+        for each node in frontier:
+            when node is goal:
+                return distance
+            for each neighbor in graph[node]:
+                when neighbor not in visited:
+                    add neighbor to visited
+                    add neighbor to next_frontier
+        frontier = next_frontier
+        increase distance by 1
+    return -1
+
+expect:
+    given g = { "a": ["b", "c"], "b": ["d"], "c": ["d"], "d": [] }
+    shortest_hops(g, "a", "d") == 2
+    shortest_hops(g, "a", "a") == 0

@@ -5,6 +5,41 @@ resume cleanly across sessions.
 
 ---
 
+## 2026-07-25 (later) — `pedroc` compiles the whole cookbook
+
+Grew the compiler from the integer subset to the full cookbook feature set, and
+made the cookbook a passing regression suite.
+
+### Added to `pedroc`
+- Types: `list of T`, `map of K to V`, `optional T`.
+- Literals: lists `[...]`, maps `{k: v}`; indexing `x[i]`; string interpolation
+  (`"{a}{b}"` -> f-string); conversions `x as text|whole|number`.
+- Statements: `for each x in c` and `for each i, x in c`; `add x to list`;
+  `swap items at i and j in list`; `fail with "..."`; `set m[k] to v`.
+- Operators: membership `in` / `not in`; `followed by` (concat); predicates
+  `is empty` / `is present` / `is nothing` / `is not empty`.
+- Keyword operations: `count of`, `first/last of`, `copy of`, `characters of`,
+  `take/drop n from`, `item at i in`, `split by`, `sort`, `numbers from a to b`,
+  `empty map of K to V`, and comprehensions `filter/collect/count/sum/find`.
+- `expect` gained `given <name> = <expr>` setup and `<call> fails with "<msg>"`;
+  `fail with` compiles to a generated `PedroError`, and `check` runs both forms.
+
+### Corpus + regression
+- `examples/cookbook/*.pedro` — the 22 cookbook algorithms as real source, in 5
+  files (numbers, text, search_sort, collections, dp_graph).
+- `tools/regress.py` — compiles + `check`s the whole corpus.
+  **Current: 46/46 expectations pass across 6 files, exit 0.** This is the
+  compiler's regression suite going forward.
+- README reconciled with the real architecture (Claude authors -> pedroc
+  compiles; the check loop; coverage/status).
+
+### Not yet in the compiler (language-designed; next up)
+`record` types, `enum`, capabilities/effects + adapter layer, `match`/`case`,
+`try/on failure`, TypeScript backend. (`order_total.pedro` and `signup.pedro` use
+these, so they don't compile yet — kept as design examples.)
+
+---
+
 ## 2026-07-25 — LLM-first tooling: `check`, holes, language card, authoring skill
 
 **Direction:** Pedro = the verifiable IR between natural-language intent and

@@ -1,0 +1,45 @@
+# Text algorithms. Compiled and checked by pedroc.
+target: python
+
+task reverse_text(input: text) returns text:
+    let result = ""
+    for each letter in input:
+        result = "{letter}{result}"
+    return result
+
+expect:
+    reverse_text("abc") == "cba"
+
+task is_palindrome(input: text) returns flag:
+    return input is reverse_text(input)
+
+expect:
+    is_palindrome("racecar") == true
+    is_palindrome("hello") == false
+
+task count_vowels(input: text) returns whole:
+    let vowels = "aeiou"
+    let total = 0
+    for each letter in input:
+        when letter in vowels:
+            increase total by 1
+    return total
+
+expect:
+    count_vowels("hello") == 2
+
+task word_count(sentence: text) returns whole:
+    let words = split sentence by " "
+    return count of (filter word in words where word is not "")
+
+expect:
+    word_count("the quick brown fox") == 4
+
+task is_anagram(first: text, second: text) returns flag:
+    let a = sort characters of first
+    let b = sort characters of second
+    return a == b
+
+expect:
+    is_anagram("listen", "silent") == true
+    is_anagram("apple", "pale") == false
