@@ -71,6 +71,13 @@ class ExprStmt:
     expr: object
 
 
+@dataclass
+class Todo:
+    """A typed hole: `todo "<why>"`. First-class uncertainty for the author."""
+    message: str
+    line: int
+
+
 # --- expressions ---
 
 @dataclass

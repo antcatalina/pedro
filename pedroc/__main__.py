@@ -1,46 +1,51 @@
 """Command-line interface for pedroc.
 
     python -m pedroc build <file.pedro> [-o <out.py>] [--target python]
+    python -m pedroc check <file.pedro> [--json] [--target python]
 """
+import json
 import os
 import sys
 
 from . import compile_source, PedroSyntaxError
+from .check import check
 
-USAGE = "usage: python -m pedroc build <file.pedro> [-o <out.py>] [--target python]"
+BUILD_USAGE = "usage: python -m pedroc build <file.pedro> [-o <out.py>] [--target python]"
+CHECK_USAGE = "usage: python -m pedroc check <file.pedro> [--json] [--target python]"
+USAGE = BUILD_USAGE + "\n" + CHECK_USAGE
 
 
-def main(argv):
-    if len(argv) < 2 or argv[0] != "build":
-        print(USAGE, file=sys.stderr)
+def _read(path):
+    with open(path, "r", encoding="utf-8") as f:
+        return f.read()
+
+
+def _cmd_build(args):
+    if not args:
+        print(BUILD_USAGE, file=sys.stderr)
         return 2
-
-    infile = argv[1]
+    infile = args[0]
     out = None
     target = "python"
-    i = 2
-    while i < len(argv):
-        if argv[i] == "-o" and i + 1 < len(argv):
-            out = argv[i + 1]
+    i = 1
+    while i < len(args):
+        if args[i] == "-o" and i + 1 < len(args):
+            out = args[i + 1]
             i += 2
-        elif argv[i] == "--target" and i + 1 < len(argv):
-            target = argv[i + 1]
+        elif args[i] == "--target" and i + 1 < len(args):
+            target = args[i + 1]
             i += 2
         else:
-            print(f"unknown or incomplete argument: {argv[i]}", file=sys.stderr)
+            print(f"unknown or incomplete argument: {args[i]}", file=sys.stderr)
             return 2
-
     try:
-        with open(infile, "r", encoding="utf-8") as f:
-            source = f.read()
-        code = compile_source(source, filename=os.path.basename(infile), target=target)
+        code = compile_source(_read(infile), filename=os.path.basename(infile), target=target)
     except PedroSyntaxError as e:
-        print(f"{infile}:{e.line}: error: {e.message}", file=sys.stderr)
+        print(f"{infile}:{e.line}: error [{e.code}]: {e.message}", file=sys.stderr)
         return 1
     except (OSError, ValueError) as e:
         print(f"error: {e}", file=sys.stderr)
         return 1
-
     if out:
         with open(out, "w", encoding="utf-8") as f:
             f.write(code)
@@ -48,6 +53,67 @@ def main(argv):
     else:
         sys.stdout.write(code)
     return 0
+
+
+def _cmd_check(args):
+    if not args:
+        print(CHECK_USAGE, file=sys.stderr)
+        return 2
+    infile = args[0]
+    as_json = False
+    target = "python"
+    i = 1
+    while i < len(args):
+        if args[i] == "--json":
+            as_json = True
+            i += 1
+        elif args[i] == "--target" and i + 1 < len(args):
+            target = args[i + 1]
+            i += 2
+        else:
+            print(f"unknown or incomplete argument: {args[i]}", file=sys.stderr)
+            return 2
+    try:
+        source = _read(infile)
+    except OSError as e:
+        print(f"error: {e}", file=sys.stderr)
+        return 1
+    report = check(source, filename=os.path.basename(infile), target=target)
+    if as_json:
+        print(json.dumps(report, indent=2))
+    else:
+        _print_human(report)
+    return 0 if report["ok"] else 1
+
+
+def _print_human(report):
+    print(f"{report['file']}: {report['summary']}")
+    for err in report["errors"]:
+        print(f"  error [{err['code']}] line {err['line']}: {err['message']}")
+        if err.get("hint"):
+            print(f"    hint: {err['hint']}")
+    for hole in report["holes"]:
+        print(f"  hole  line {hole['line']}: {hole['message']}")
+    for exp in report["expectations"]:
+        mark = "PASS" if exp["passed"] else "FAIL"
+        line = f"  [{mark}] {exp['text']}"
+        if not exp["passed"] and exp["detail"]:
+            line += f"   ({exp['detail']})"
+        print(line)
+    print("  => ok" if report["ok"] else "  => not ok")
+
+
+def main(argv):
+    if not argv:
+        print(USAGE, file=sys.stderr)
+        return 2
+    cmd = argv[0]
+    if cmd == "build":
+        return _cmd_build(argv[1:])
+    if cmd == "check":
+        return _cmd_check(argv[1:])
+    print(USAGE, file=sys.stderr)
+    return 2
 
 
 if __name__ == "__main__":

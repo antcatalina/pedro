@@ -81,6 +81,9 @@ def _gen_stmt(s, indent):
         return [f"{pad}for _ in range({_gen_expr(s.count)}):"] + _gen_block(s.body, indent + 1)
     if isinstance(s, N.ExprStmt):
         return [f"{pad}{_gen_expr(s.expr)}"]
+    if isinstance(s, N.Todo):
+        msg = s.message.replace("\\", "\\\\").replace('"', '\\"')
+        return [f'{pad}raise NotImplementedError("unresolved Pedro hole: {msg}")']
     raise TypeError(f"unknown statement node: {s!r}")
 
 

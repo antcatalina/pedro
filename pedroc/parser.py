@@ -48,7 +48,12 @@ class Parser:
         if t[0] != ttype or (val is not None and t[1] != val):
             want = repr(val) if val is not None else ttype
             found = repr(t[1]) if t[1] != "" else t[0]
-            raise PedroSyntaxError(t[2], f"expected {want}, found {found}")
+            hint = None
+            if val == ":":
+                hint = "a block header ends with ':' followed by an indented body"
+            elif val == "returns":
+                hint = "declare a task's result type after ')': `task f(...) returns <type>:`"
+            raise PedroSyntaxError(t[2], f"expected {want}, found {found}", code="unexpected-token", hint=hint)
         return self._advance()
 
     def _skip_newlines(self):
@@ -165,6 +170,12 @@ class Parser:
                 value = self._parse_expr()
                 self._expect("NEWLINE")
                 return N.AugAssign(name=name, op="+" if kw == "increase" else "-", value=value)
+            if kw == "todo":
+                line = self._line()
+                self._advance()
+                msg = self._expect("STRING")[1]
+                self._expect("NEWLINE")
+                return N.Todo(message=msg, line=line)
             if kw == "when":
                 return self._parse_if_chain()
             if kw == "while":

@@ -42,7 +42,7 @@ def _tokenize_line(s, lineno):
                 buf.append(s[j])
                 j += 1
             if j >= n:
-                raise PedroSyntaxError(lineno, "unterminated string literal")
+                raise PedroSyntaxError(lineno, "unterminated string literal", code="unterminated-string")
             toks.append(("STRING", "".join(buf), lineno))
             i = j + 1
             continue
@@ -69,7 +69,7 @@ def _tokenize_line(s, lineno):
             toks.append(("OP", ch, lineno))
             i += 1
             continue
-        raise PedroSyntaxError(lineno, f"unexpected character {ch!r}")
+        raise PedroSyntaxError(lineno, f"unexpected character {ch!r}", code="unexpected-character")
     return toks
 
 
@@ -91,7 +91,12 @@ def tokenize(source):
                 indent_stack.pop()
                 tokens.append(("DEDENT", "", lineno))
             if indent != indent_stack[-1]:
-                raise PedroSyntaxError(lineno, "inconsistent indentation")
+                raise PedroSyntaxError(
+                    lineno,
+                    "inconsistent indentation",
+                    code="bad-indentation",
+                    hint="a nested block must be indented further than its header; sibling statements share indentation",
+                )
         tokens.extend(_tokenize_line(stripped, lineno))
         tokens.append(("NEWLINE", "", lineno))
     while len(indent_stack) > 1:
