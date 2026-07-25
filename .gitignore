@@ -1,0 +1,19 @@
+# Compiled Pedro output
+/build/
+/out/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+.env
+
+# Node / TypeScript
+node_modules/
+dist/
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

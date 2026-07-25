@@ -1,0 +1,24 @@
+# Compute an order total, applying a percentage discount.
+# A free-shipping tier (subtotal over 100) gets an extra 5% off.
+target: python 3.11
+
+record LineItem:
+    name: text
+    price: number
+    quantity: whole
+
+task order_total(items: list of LineItem, discount_percent: number) -> number:
+    let subtotal = 0
+    for each item in items:
+        subtotal = subtotal + item.price * item.quantity
+
+    when subtotal > 100:
+        # free-shipping tier gets an extra 5% off
+        discount_percent = discount_percent + 5
+
+    let discount = subtotal * discount_percent / 100
+    return subtotal - discount
+
+expect:
+    order_total([ { name: "pen",  price: 2.5, quantity: 4 } ], 0)  == 10
+    order_total([ { name: "desk", price: 120, quantity: 1 } ], 10) == 102

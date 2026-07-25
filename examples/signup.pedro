@@ -1,0 +1,30 @@
+# Sign a new user up: validate the email, reject duplicates,
+# hash the password, store the user, and send a welcome email.
+target: python 3.11
+
+use capability database
+use capability email
+use capability crypto
+
+record User:
+    id: text
+    email: text
+    password: text
+
+task sign_up(email: text, password: text) -> text:
+    when email is not a valid email:
+        fail with "invalid email"
+
+    let existing = find one user in users where user.email == email
+    when existing is present:
+        fail with "email already registered"
+
+    let hashed = hash password
+    let new_id = insert into users { email: email, password: hashed }
+    send email to email with subject "Welcome!" body "Thanks for signing up."
+    return new_id
+
+expect:
+    given users is empty
+    sign_up("ada@example.com", "s3cret") is present
+    sign_up("not-an-email", "s3cret") fails with "invalid email"
