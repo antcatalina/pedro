@@ -69,6 +69,26 @@ AntMac); all agent work accumulates there and is reviewed + merged to `master` b
 human. If a prior run already did your task, advance it (more coverage, tests,
 robustness) rather than redoing it.
 
+## Progress & handoff (multi-session tasks)
+
+A working session — especially an unattended agent run — can end abruptly (a
+usage limit or a timeout). The toolchain commits and pushes whatever is on disk
+at the end of every run, so partial *code* survives; what's easily lost is
+knowing *what remains*. So:
+
+- **`PROGRESS.md` (repo root) is the baton.** It records the ONE in-flight task:
+  a checklist of what is done (`[x]`) and what remains (`[ ]`), the exact next
+  action, and any gotchas/decisions made.
+- **Resume first.** At the start of a session, read `PROGRESS.md` and
+  `WORKLOG.md`; if there is an unfinished task, continue and finish it before
+  starting anything new.
+- **Update it as you go**, not just at the end — only what is on disk survives an
+  abrupt stop. Keep `python tools/regress.py` green whenever you pause so partial
+  work is safe to build on.
+- **Clear it when done.** When a task is fully complete and green, remove it from
+  `PROGRESS.md` and add a dated `WORKLOG.md` entry. If it is blocked, record the
+  blocker and move on.
+
 ## Current coverage (as of this writing)
 
 **Supported by the compiler:** scalars (`text`/`whole`/`number`/`flag`), lists,
