@@ -34,6 +34,7 @@ class Expect:
 class Assign:
     name: str
     value: object
+    is_decl: bool = False   # True for `let x = ...` (a fresh binding)
 
 
 @dataclass

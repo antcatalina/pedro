@@ -5,6 +5,78 @@ resume cleanly across sessions.
 
 ---
 
+## 2026-07-25 (later 2) — TypeScript backend: STARTED, handed off mid-way
+
+**Goal:** a second codegen backend (TS) to prove Pedro is a *language*, not a
+Python front-end — one source, two verified targets. Paused at the user's
+request; the tree is clean and green (46/46). Resume from here.
+
+**Environment fact (verified):** Node **v24.16.0** runs `.ts` files directly via
+type-stripping — `node file.ts` works with zero setup (no npm/tsc/ts-node). So
+generated TypeScript is verifiable *by running it*, same bar as Python. Generated
+TS should use only erasable type syntax (annotations, interfaces, `as`) — no
+`enum`/`namespace`.
+
+**Done so far (committed):** added `is_decl: bool = False` to `nodes.Assign`
+(harmless; nothing reads it yet). Compiler unchanged in behavior.
+
+**Remaining steps to finish the backend (in order):**
+1. `parser.py`: in the `let` branch set `Assign(..., is_decl=True)`; change the
+   `followed by` handling in `_parse_add` from `BinOp("+", ...)` to
+   `BinOp("followed_by", ...)` (list-concat differs from `+` in JS).
+2. `codegen_python.py`: add `"followed_by": "+"` to `BINOP_MAP` (keeps Python
+   working after step 1). `is_decl` is ignored by the Python backend.
+3. New `pedroc/codegen_ts.py` — `generate(program, filename)` returning TS
+   (design below).
+4. `pedroc/__init__.py`: register `"typescript": generate_ts` in `_TARGETS`, and
+   in `compile_source` set `program.target = target` before dispatch (so the
+   header comment matches the requested backend).
+5. Verify: for each `examples/cookbook/*.pedro` (+ `examples/math.pedro`),
+   `python -m pedroc build <f> --target typescript -o build/x.ts` then
+   `node build/x.ts` (expect "…all expectations passed ✓"). Then add a TS lane
+   to `tools/regress.py` that shells out to `node` when it's on PATH.
+
+**TS codegen design — the Python→JS semantic gaps and how to bridge them:**
+- **Types:** text→`string`, whole/number→`number`, flag→`boolean`,
+  nothing→`void`; `list of T`→`T[]`; `map of K to V`→`Record<K, V>`;
+  `optional T`→`T | null`. (All erased at runtime.)
+- **Locals:** use `is_decl` → `let x = …` for declarations, `x = …` for
+  reassignment. (JS needs the distinction; Python didn't.)
+- **Runtime preamble helpers (emit once at top):**
+  - `__eq(a,b)` deep value-equality — **required**: JS `===` is reference-equal
+    for arrays/objects but Pedro `==` is value-equal, so without this EVERY array
+    expectation (fizzbuzz, quicksort, unique, merge_sort, is_anagram…) fails.
+  - `__in(x,c)` — arrays/strings → `.includes`, objects → `x in c`. (Raw JS
+    `x in array` checks indices, not values — must not use it.)
+  - `__len`, `__range(a,b)` (inclusive), `__sort` (comparator via `< >`, since
+    JS default sort is lexicographic), `__last`, `__concat` (arrays `.concat`,
+    strings `+`).
+- **BinOp map:** `==`→`__eq(l,r)`, `!=`→`!__eq(l,r)`, `div`→`Math.floor(l / r)`,
+  `mod`→`%`, `followed_by`→`__concat`, `in`→`__in`, `not in`→`!__in`,
+  `and`→`&&`, `or`→`||`, `is`/`is not`→`===`/`!==` (and `Name("None")`→`null`),
+  `< <= > >=` passthrough.
+- **Builtins:** count_of→`__len`, first_of→`x[0]`, last_of→`__last`,
+  copy_of→`x.slice()`, chars_of→`Array.from(x)`, take→`x.slice(0,n)`,
+  drop→`x.slice(n)`, item_at→`x[i]`, split→`x.split(sep)`, sort→`__sort`,
+  empty_map→`{}`, range→`__range(a,b)`.
+- **Comprehensions:** filter→`.filter`, collect→`.filter().map()` (or `.map()`),
+  count→`.filter().length`, sum→`.reduce((acc,x)=>acc+(elem),0)`,
+  find→`.find(...) ?? null`.
+- **Strings:** interpolation `"{a}{b}"`→template literal `` `${a}${b}` `` (convert
+  `{`→`${`, honor `\{`→literal `{`); plain strings → double-quoted.
+- **Statements:** `add`→`.push`, `swap`→`[a[i],a[j]]=[a[j],a[i]]`,
+  `fail with`→`throw new PedroError(msg)` (emit `class PedroError extends Error {}`
+  when used), `repeat n times`→`for (let __r<depth>=0; __r<depth> < n; __r<depth>++)`,
+  `for each i, x`→`for (const [i, x] of c.entries())`.
+- **expect main:** emit as a top-level IIFE `(() => { …; console.log("<file>: all
+  expectations passed ✓"); })();` (runs when `node file.ts` executes).
+  `given`→`const`, `assert`→`if (!(expr)) throw new Error(...)`, `fails`→a block
+  with `let __threw=false; try{call}catch(e){__threw=true; if(!(e instanceof
+  PedroError)||e.message!==msg) throw e;} if(!__threw) throw ...`.
+- **`check`** stays Python-only for execution; TS verified via build + `node`.
+
+---
+
 ## 2026-07-25 (later) — `pedroc` compiles the whole cookbook
 
 Grew the compiler from the integer subset to the full cookbook feature set, and
