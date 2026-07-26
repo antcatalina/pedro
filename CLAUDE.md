@@ -66,8 +66,11 @@ python tools/regress.py
 
 Autonomous agents run round-robin on the shared **`agent/dev`** branch (queue on
 AntMac); all agent work accumulates there and is reviewed + merged to `master` by a
-human. If a prior run already did your task, advance it (more coverage, tests,
-robustness) rather than redoing it.
+human. Each run **merges `origin/master` into `agent/dev` first**, so your branch
+always includes the latest `master` (docs, conventions, and fixes pushed from the
+dev machine) — resolve any resulting merge conflict as part of your run. If a prior
+run already did your task, advance it (more coverage, tests, robustness) rather than
+redoing it.
 
 ## Progress & handoff (multi-session tasks)
 
