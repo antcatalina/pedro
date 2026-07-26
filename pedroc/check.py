@@ -27,6 +27,12 @@ def _collect_holes(program):
         for s in stmts:
             if isinstance(s, N.Todo):
                 holes.append(s)
+            elif isinstance(s, N.Match):
+                for _, body in s.cases:
+                    walk(body)
+            elif isinstance(s, N.Try):
+                walk(s.body)
+                walk(s.handler)
             elif isinstance(s, N.If):
                 for _, body in s.branches:
                     walk(body)

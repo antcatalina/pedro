@@ -95,6 +95,23 @@ class Swap:
 
 
 @dataclass
+class Match:
+    """`match <subject>:` with `case <value>:` arms and an optional
+    `case otherwise:` default (stored as a case whose value is None)."""
+    subject: object
+    cases: list          # list of (value_expr_or_None, body)
+
+
+@dataclass
+class Try:
+    """`try:` / `on failure as <err>:` — run body, and on a `fail with` recover
+    in the handler with `err` bound to the failure message text."""
+    body: list
+    err_name: str
+    handler: list
+
+
+@dataclass
 class Fail:
     message: object
 

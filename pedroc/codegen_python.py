@@ -47,6 +47,13 @@ def _uses_pedro_error(program):
         for s in stmts:
             if isinstance(s, N.Fail):
                 found[0] = True
+            elif isinstance(s, N.Try):
+                found[0] = True  # the generated `except PedroError` needs it
+                walk(s.body)
+                walk(s.handler)
+            elif isinstance(s, N.Match):
+                for _, body in s.cases:
+                    walk(body)
             elif isinstance(s, N.If):
                 for _, body in s.branches:
                     walk(body)
@@ -64,7 +71,16 @@ def _uses_pedro_error(program):
     return found[0]
 
 
+_match_counter = [0]
+
+
+def _fresh_subject():
+    _match_counter[0] += 1
+    return f"_subject{_match_counter[0]}"
+
+
 def generate(program, filename="<pedro>"):
+    _match_counter[0] = 0  # reset per call → deterministic temp names
     lines = [
         f"# Generated from {filename} by pedroc v0.1 (target: {program.target}). Do not edit by hand.",
         "",
@@ -166,6 +182,31 @@ def _gen_stmt(s, indent):
     if isinstance(s, N.Swap):
         t, i, j = _gen_expr(s.target), _gen_expr(s.i), _gen_expr(s.j)
         return [f"{pad}{t}[{i}], {t}[{j}] = {t}[{j}], {t}[{i}]"]
+    if isinstance(s, N.Match):
+        tmp = _fresh_subject()
+        out = [f"{pad}{tmp} = {_gen_expr(s.subject)}"]
+        emitted = False
+        for (value, body) in s.cases:
+            if value is None:  # otherwise
+                if emitted:
+                    out.append(f"{pad}else:")
+                    out.extend(_gen_block(body, indent + 1))
+                else:  # match with only an otherwise arm → unconditional
+                    out.extend(_gen_block(body, indent))
+            else:
+                kw = "if" if not emitted else "elif"
+                out.append(f"{pad}{kw} {tmp} == {_gen_expr(value)}:")
+                out.extend(_gen_block(body, indent + 1))
+                emitted = True
+        return out
+    if isinstance(s, N.Try):
+        pad_in = "    " * (indent + 1)
+        out = [f"{pad}try:"]
+        out.extend(_gen_block(s.body, indent + 1))
+        out.append(f"{pad}except PedroError as _pedro_err:")
+        out.append(f"{pad_in}{s.err_name} = str(_pedro_err)")
+        out.extend(_gen_block(s.handler, indent + 1))
+        return out
     if isinstance(s, N.Fail):
         return [f"{pad}raise PedroError({_gen_expr(s.message)})"]
     if isinstance(s, N.ExprStmt):

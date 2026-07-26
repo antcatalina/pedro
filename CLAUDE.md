@@ -98,10 +98,12 @@ knowing *what remains*. So:
 maps, `let`/reassign, `increase`/`decrease`, `when`/`otherwise`, `while`, `repeat`,
 `for each` (+index), recursion, arithmetic + readable comparisons, membership,
 `followed by`, the collection operations (`count of`, `item at`, `filter`, `sum of`,
-`numbers from`, …), string interpolation, `fail with`, typed holes (`todo`), and
-`expect` with `given`/`fails with`. **Target:** Python.
+`numbers from`, …), string interpolation, `fail with`, `match`/`case` (+ `case
+otherwise`), `try`/`on failure as err`, typed holes (`todo`), and `expect` with
+`given`/`fails with`. **Target:** Python.
 
 **Designed but NOT yet in the compiler** (see `WORKLOG.md` roadmap, highest first):
-TypeScript backend (fully designed, in progress on `agent/dev`), `record`/`enum`,
-capabilities/effects + adapter layer, `match`/`case`, `try`/`on failure`. The
-`WORKLOG.md` roadmap section is the source of truth for what to build next.
+TypeScript backend (fully designed, in progress on `agent/dev`), `record`/`enum`
+(so `match` currently switches over plain values, not enum variants),
+capabilities/effects + adapter layer. The `WORKLOG.md` roadmap section is the
+source of truth for what to build next.

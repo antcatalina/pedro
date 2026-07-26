@@ -1,0 +1,31 @@
+target: python
+
+# Wrapping a failing operation in `try:` / `on failure as err:` and recovering.
+# `checked_divide` fails on a zero divisor; the callers recover — one with a
+# fallback value, one by reporting the failure message bound to `err`.
+
+task checked_divide(a: whole, b: whole) returns whole:
+    when b is 0:
+        fail with "division by zero"
+    return a div b
+
+task safe_divide(a: whole, b: whole) returns whole:
+    try:
+        return checked_divide(a, b)
+    on failure as err:
+        return 0
+
+task describe_divide(a: whole, b: whole) returns text:
+    try:
+        let result = checked_divide(a, b)
+        return "result is {result}"
+    on failure as err:
+        return "failed: {err}"
+
+expect:
+    checked_divide(6, 3) == 2
+    checked_divide(1, 0) fails with "division by zero"
+    safe_divide(10, 2) == 5
+    safe_divide(10, 0) == 0
+    describe_divide(10, 2) == "result is 5"
+    describe_divide(10, 0) == "failed: division by zero"

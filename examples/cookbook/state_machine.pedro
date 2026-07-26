@@ -1,0 +1,26 @@
+target: python
+
+# A turnstile state machine, driven by `match` over its (text) states.
+# States are "locked" and "unlocked"; events are "coin" and "push".
+# (Enums aren't in the compiler yet, so states are plain text values — the
+# `match`/`case`/`case otherwise` shape is the point.)
+
+task next_state(state: text, event: text) returns text:
+    match state:
+        case "locked":
+            when event is "coin":
+                return "unlocked"
+            return "locked"
+        case "unlocked":
+            when event is "push":
+                return "locked"
+            return "unlocked"
+        case otherwise:
+            fail with "unknown state"
+
+expect:
+    next_state("locked", "coin") == "unlocked"
+    next_state("locked", "push") == "locked"
+    next_state("unlocked", "push") == "locked"
+    next_state("unlocked", "coin") == "unlocked"
+    next_state("broken", "coin") fails with "unknown state"

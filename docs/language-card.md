@@ -43,7 +43,13 @@ expect:
 - `increase x by <expr>` · `decrease x by <expr>`
 - `return <expr>` · `return`
 - `when <cond>:` / `when <cond>:` / `otherwise:`  — first true branch wins
+- `match <expr>:` with `case <value>:` arms and a final `case otherwise:` —
+  the subject is compared by equality against each case; `otherwise` is the
+  default (and must be last)
+- `try:` / `on failure as <err>:` — run the body; if a `fail with` fires,
+  recover in the handler with `<err>` bound to the failure message (a `text`)
 - `while <cond>:` · `repeat <expr> times:`
+- `fail with <expr>`  — raise a recoverable failure with a message
 - `todo "<message>"`  — an unresolved hole
 
 ## Expressions
@@ -81,4 +87,23 @@ expect:
     is_prime(2) == true
     is_prime(97) == true
     is_prime(100) == false
+```
+
+## `match` and `try` (control flow)
+
+```pedro
+task next_state(state: text, event: text) returns text:
+    match state:
+        case "locked":
+            when event is "coin":
+                return "unlocked"
+            return "locked"
+        case otherwise:
+            fail with "unknown state"
+
+task safe_next(state: text, event: text) returns text:
+    try:
+        return next_state(state, event)
+    on failure as err:
+        return "error: {err}"
 ```

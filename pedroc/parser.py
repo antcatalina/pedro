@@ -255,6 +255,10 @@ class Parser:
                 return N.Todo(message=msg, line=line)
             if kw == "when":
                 return self._parse_if_chain()
+            if kw == "match":
+                return self._parse_match()
+            if kw == "try":
+                return self._parse_try()
             if kw == "while":
                 self._advance()
                 cond = self._parse_expr()
@@ -298,6 +302,53 @@ class Parser:
             self._expect("NEWLINE")
             orelse = self._parse_block()
         return N.If(branches=branches, orelse=orelse)
+
+    def _parse_match(self):
+        self._advance()  # 'match'
+        subject = self._parse_expr()
+        self._expect("OP", ":")
+        self._expect("NEWLINE")
+        self._expect("INDENT")
+        cases = []
+        saw_otherwise = False
+        while self._is_name("case"):
+            if saw_otherwise:
+                raise PedroSyntaxError(
+                    self._line(), "no case may follow 'case otherwise'",
+                    code="case-after-otherwise",
+                    hint="'case otherwise:' is the default and must be the last arm",
+                )
+            self._advance()  # 'case'
+            if self._is_name("otherwise"):
+                self._advance()
+                value = None
+                saw_otherwise = True
+            else:
+                value = self._parse_expr()
+            self._expect("OP", ":")
+            self._expect("NEWLINE")
+            cases.append((value, self._parse_block()))
+        if not cases:
+            raise PedroSyntaxError(
+                self._line(), "a 'match' needs at least one 'case'",
+                code="empty-match", hint="add `case <value>:` arms under the match",
+            )
+        self._expect("DEDENT")
+        return N.Match(subject=subject, cases=cases)
+
+    def _parse_try(self):
+        self._advance()  # 'try'
+        self._expect("OP", ":")
+        self._expect("NEWLINE")
+        body = self._parse_block()
+        self._expect("NAME", "on")
+        self._expect("NAME", "failure")
+        self._expect("NAME", "as")
+        err_name = self._expect("NAME")[1]
+        self._expect("OP", ":")
+        self._expect("NEWLINE")
+        handler = self._parse_block()
+        return N.Try(body=body, err_name=err_name, handler=handler)
 
     # --- expressions (precedence climbing) ---
     def _parse_expr(self):

@@ -5,6 +5,48 @@ resume cleanly across sessions.
 
 ---
 
+## 2026-07-26 — `match`/`case` + `try`/`on failure` (control-flow, roadmap #4)
+
+Added two control-flow constructs to `pedroc` (Python backend — the TS backend
+isn't landed yet, so "both backends" is Python-only for now; the AST is shaped so
+TS codegen drops in trivially later).
+
+**`match <subject>:`** with `case <value>:` arms and a final optional
+`case otherwise:` default. The subject is evaluated **once** into a fresh temp
+(`_subjectN`, counter reset per `generate()` call → deterministic) and compared by
+equality against each case → a Python `if`/`elif`/`else` chain. Enum variants
+aren't in the compiler yet, so cases match plain values (text/whole/…); the
+state-machine example uses text-valued states. `case otherwise` must be last
+(parser enforces `case-after-otherwise`; empty match → `empty-match`).
+
+**`try:` / `on failure as <err>:`** → Python `try` / `except PedroError`. On
+recovery, `<err>` is bound to the failure *message text* (`str(e)`), not the
+exception object, so it stays a plain `text` usable in interpolation. Any `try`
+now forces the `PedroError` class into the output (`_uses_pedro_error`).
+
+**New pieces:** `nodes.Match`, `nodes.Try`; parser `_parse_match`/`_parse_try`;
+codegen `_gen_stmt` arms + `_fresh_subject`; recursion added to the codegen
+`_uses_pedro_error` walker and `check._collect_holes` (so holes/fail-detection
+descend into match arms and try/handler bodies).
+
+**Examples (both pass `pedroc check`):**
+- `examples/cookbook/state_machine.pedro` — a turnstile state machine via `match`
+  over its states, with `case otherwise: fail with "unknown state"`.
+- `examples/cookbook/recover.pedro` — `checked_divide` fails on a zero divisor;
+  `safe_divide` recovers with a fallback and `describe_divide` recovers using the
+  bound `err` message.
+
+`python tools/regress.py` → **57 expectations green** (was 46). Output verified
+deterministic (byte-identical recompiles). Docs updated: README, CLAUDE.md
+coverage, `docs/language-card.md`.
+
+**Next (still open on the roadmap):** TS codegen for `match`/`try` when the TS
+backend lands (switch/if-chain + try/catch); enum variants so `match` can switch
+over `Status.active`-style cases; optional `on failure:` without a binding if it
+proves useful.
+
+---
+
 ## 2026-07-25 (later 3) — Autonomous agent queue live on AntMac
 
 Unattended development is set up. `~/jobs/pedro/` on AntMac (apple@192.168.0.109)
