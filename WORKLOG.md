@@ -5,6 +5,37 @@ resume cleanly across sessions.
 
 ---
 
+## 2026-07-25 (later 3) — Autonomous agent queue live on AntMac
+
+Unattended development is set up. `~/jobs/pedro/` on AntMac (apple@192.168.0.109)
+runs pedroc's CI (`python tools/regress.py`) and drives Claude (model
+`claude-opus-4-8`) on the shared **`agent/dev`** branch, round-robin over the
+queue, on cron at 12:00 AM, 5:15 AM, and 2:30 PM (America/Denver). GitHub push
+from the Mac was fixed by switching its remote to SSH (the Mac's key is already
+registered on the account). All agent work lands on `agent/dev`; review and merge
+to `master` periodically.
+
+**Reprioritized roadmap — highest first (this IS the agent queue order):**
+1. **TypeScript backend** — designed in full below; do this first. Second target
+   proves Pedro is a language, not a Python front-end. Verify with `node` on the Mac.
+2. **Records + enums** — data modeling; unblocks `examples/order_total.pedro`.
+3. **Capabilities + adapters** — THE differentiator (auditable, capability-gated
+   I/O); unblocks `examples/signup.pedro`.
+4. **Control-flow completeness** — `match`/`case` and `try`/`on failure as err`.
+5. **Diagnostics / oracle quality** — column numbers, did-you-mean, richer
+   `pedroc check --json` (fix suggestions, capability surface).
+6. **Sandbox `check`** — run generated code in a subprocess with a timeout.
+7. **Differential + fuzz testing** — compile each corpus program to Python AND
+   TypeScript, run both, assert identical results; grammar-based fuzzer.
+8. **LLM authoring eval harness** — measure how reliably a model authors correct
+   Pedro (NL → Pedro → check → fix). Makes the "go-to language for LLMs" claim
+   measurable.
+9. **Packaging** — `pyproject.toml`, `pedroc` entry point, `pip install -e .`.
+10. **Normative `docs/SPEC.md` + `docs/grammar.md`.**
+11. **Cookbook expansion** — more algorithms as verified `.pedro` files.
+
+---
+
 ## 2026-07-25 (later 2) — TypeScript backend: STARTED, handed off mid-way
 
 **Goal:** a second codegen backend (TS) to prove Pedro is a *language*, not a
