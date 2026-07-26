@@ -434,6 +434,7 @@ PYTHONPATH=. python -m pedroc check examples/cookbook/numbers.pedro --json
 ```
 pedro/
 ├── README.md              # overview + language guide
+├── CLAUDE.md              # standing guidance for Claude / automated agents
 ├── WORKLOG.md             # dated change log + next steps
 ├── pedroc/                # the real compiler: lexer, parser, codegen, check, CLI
 ├── docs/
@@ -449,6 +450,10 @@ pedro/
 ├── skills/write-pedro/    # the Claude Code authoring skill (NL -> Pedro)
 └── tools/regress.py       # compiles + checks the whole corpus
 ```
+
+## Working on Pedro (humans and agents)
+
+Repo-specific conventions and guardrails for anyone — or any Claude agent — making changes live in **[`CLAUDE.md`](CLAUDE.md)**; read it first. Automated agents run on the shared **`agent/dev`** branch and follow the prioritized roadmap in [`WORKLOG.md`](WORKLOG.md); their work is reviewed and merged to `master`.
 
 ## Roadmap
 
