@@ -6,7 +6,16 @@ and examples/cookbook), running each program's `expect` block. Exits non-zero if
 anything fails. Run from anywhere:
 
     python tools/regress.py
+
+Correctness harness (kept OFF the default fast path):
+    python tools/regress.py --diff    # cross-backend differential over the corpus
+    python tools/regress.py --fuzz     # full grammar fuzzer (200 programs)
+    python tools/regress.py --slow     # both of the above
+
+The default run includes only a tiny fuzz SMOKE (a dozen programs) so CI stays
+fast; use the flags above for the heavier sweeps.
 """
+import argparse
 import glob
 import os
 import sys
@@ -23,7 +32,15 @@ def corpus():
     return files
 
 
-def main():
+def main(argv=None):
+    ap = argparse.ArgumentParser(description="pedroc regression suite")
+    ap.add_argument("--diff", action="store_true", help="run the cross-backend differential tester")
+    ap.add_argument("--fuzz", action="store_true", help="run the full grammar fuzzer (200 programs)")
+    ap.add_argument("--slow", action="store_true", help="run both --diff and --fuzz")
+    args = ap.parse_args(argv)
+    run_diff = args.diff or args.slow
+    run_full_fuzz = args.fuzz or args.slow
+
     all_ok = True
     total_expectations = 0
     for path in corpus():
@@ -54,6 +71,19 @@ def main():
     print()
     if not run_sandbox_tests():
         all_ok = False
+
+    # Correctness harness. A tiny fuzz smoke always runs (fast); the heavier
+    # sweeps are opt-in so the default `python tools/regress.py` stays quick.
+    from tools.fuzz import run as run_fuzz
+    from tools.differential import run as run_differential
+    print()
+    fuzz_count = 200 if run_full_fuzz else 12
+    if not run_fuzz(seed=0, count=fuzz_count):
+        all_ok = False
+    if run_diff:
+        print()
+        if not run_differential():
+            all_ok = False
 
     return 0 if all_ok else 1
 

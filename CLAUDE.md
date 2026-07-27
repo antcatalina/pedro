@@ -33,7 +33,14 @@ structured feedback — so the language must stay small, regular, and verifiable
 - `examples/math.pedro` — integer algorithms. `examples/order_total.pedro` (records)
   and `examples/signup.pedro` (capabilities) are language-designed but **not yet
   compilable**.
-- `tools/regress.py` — compiles and RUNS the whole corpus (this is CI).
+- `tools/regress.py` — compiles and RUNS the whole corpus (this is CI). Also runs
+  a small fuzz smoke by default; `--fuzz`/`--diff`/`--slow` run the full sweeps.
+- `tools/backends.py` — per-backend "run + report expectations" adapter (Python via
+  `check`; TypeScript via `node`, gated by `ts_available()`).
+- `tools/differential.py` — runs each corpus program on every available backend and
+  asserts they agree (TS lane pending until the TS backend lands).
+- `tools/fuzz.py` — seedable grammar fuzzer with a reference oracle; generates valid
+  self-checking Pedro and asserts every backend agrees.
 - `docs/` — `design-for-llms.md`, `language-card.md`, `cookbook.md` (+ `SPEC.md`
   planned). `skills/write-pedro/` — the NL→Pedro authoring skill.
 
@@ -48,6 +55,10 @@ PYTHONPATH=. python -m pedroc check <file>.pedro --json
 
 # regression / CI (must stay green)
 python tools/regress.py
+# heavier correctness sweeps (off the fast path):
+python tools/regress.py --slow          # differential + full fuzz
+python tools/fuzz.py --seed 0 --count 200
+python tools/differential.py -v
 ```
 
 ## Non-negotiable ground rules for ANY change

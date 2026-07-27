@@ -448,8 +448,18 @@ pedro/
 │   ├── order_total.pedro  # uses records       (language-designed; not yet compiled)
 │   └── signup.pedro       # uses capabilities   (language-designed; not yet compiled)
 ├── skills/write-pedro/    # the Claude Code authoring skill (NL -> Pedro)
-└── tools/regress.py       # compiles + checks the whole corpus
+└── tools/
+    ├── regress.py         # compiles + checks the whole corpus (CI)
+    ├── backends.py        # per-backend "run + report expectations" adapter
+    ├── differential.py    # runs each corpus program on every backend, asserts agreement
+    └── fuzz.py            # seedable grammar fuzzer with a reference oracle
 ```
+
+The correctness harness is kept off the default fast path: `python tools/regress.py`
+runs a tiny fuzz smoke, while `--fuzz`, `--diff`, and `--slow` run the full sweeps.
+The differential lane compares backends against each other, so it only bites once a
+second backend (TypeScript) lands; today it confirms the Python lane and reports the
+TS lane as pending.
 
 ## Working on Pedro (humans and agents)
 
@@ -459,8 +469,8 @@ Repo-specific conventions and guardrails for anyone — or any Claude agent — 
 
 Live status and next steps live in [WORKLOG.md](WORKLOG.md). In brief:
 
-- **Done** — the language design; a real deterministic compiler (`pedroc`) for the scalar/list/map subset → Python; the `pedroc check` loop, typed holes, and structured diagnostics; the [cookbook](docs/cookbook.md) (22 algorithms) as a passing regression suite (`tools/regress.py`).
-- **Next** — `record` types; capabilities + the adapter layer (unlocks "auditable by construction"); a TypeScript backend; then `docs/SPEC.md`. (`check` is now sandboxed in a subprocess.)
+- **Done** — the language design; a real deterministic compiler (`pedroc`) for the scalar/list/map subset → Python; the `pedroc check` loop, typed holes, and structured diagnostics; the [cookbook](docs/cookbook.md) (22 algorithms) as a passing regression suite (`tools/regress.py`); a differential tester + seedable grammar fuzzer (`tools/differential.py`, `tools/fuzz.py`).
+- **Next** — `record` types; capabilities + the adapter layer (unlocks "auditable by construction"); a TypeScript backend (which flips the differential/fuzz TS lanes from pending to live); then `docs/SPEC.md`. (`check` is now sandboxed in a subprocess.)
 
 ## Design principles
 

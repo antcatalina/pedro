@@ -5,6 +5,53 @@ resume cleanly across sessions.
 
 ---
 
+## 2026-07-27 — Differential tester + grammar fuzzer (roadmap #7, Python lane)
+
+Built the cross-backend correctness harness. It is designed for two backends but
+the **TypeScript backend has not landed** (`pedroc/codegen_ts.py` absent, `_TARGETS`
+is Python-only), so per the task's own guidance the harness ships **against Python
+now and the TS lane is marked PENDING** — both lanes light up automatically the
+moment `codegen_ts` + `node` are present (a `ts_available()` probe gates them).
+
+**New pieces (all under `tools/`):**
+- `backends.py` — normalizes "compile source for target T, run it, report
+  per-expectation pass/fail" to one shape across backends. `run_python` reuses the
+  trusted `pedroc.check.check()` oracle; `run_typescript` compiles via
+  `compile_source(target="typescript")` and runs the output with `node`, parsing
+  newline-delimited expectation records (falling back to a coarse exit-code result).
+  `ts_available()` is conservative: false → the TS lane is SKIPPED, never a CI fail.
+- `differential.py` — runs every corpus program on every available backend and
+  asserts they agree on each expectation. With one backend there is nothing to diff,
+  so it confirms the Python lane is green and prints the TS lane as PENDING.
+- `fuzz.py` — a **seedable** grammar fuzzer. It builds each expression bottom-up as
+  an (source, value) pair via a reference evaluator mirroring Pedro semantics
+  (`div`→floor-div, `mod`→remainder, `followed by`→concat, value-equality for
+  lists), and emits `expect` lines arranged to be TRUE under the oracle. So a correct
+  compiler must make every expectation pass; a failure (or a cross-backend
+  disagreement) is a real bug. The domain is kept non-negative for `div`/`mod` so the
+  semantics are backend-portable (Python `//` and JS `Math.floor` agree there),
+  meaning the same generated corpus exercises the TS lane identically later. Failures
+  print the exact seed + source for standalone reproduction
+  (`python tools/fuzz.py --seed <N> --count 1`).
+
+**Wired behind flags; default stays fast.** `python tools/regress.py` runs only a
+12-program fuzz **smoke** (~1s on top of the existing ~6s suite). The heavy sweeps
+are opt-in: `--fuzz` (200 programs), `--diff` (corpus differential), `--slow` (both).
+
+**Proven to have teeth.** Injecting a codegen bug (`mod`→`//` in `BINOP_MAP`) makes
+the fuzzer fail 9/40 programs with a clean repro dump; restoring it passes again.
+Otherwise no bug surfaced across thousands of programs (seeds 0–5, depth ≤5) — which
+is expected while both the oracle and the SUT are Python: the fuzzer's real teeth are
+codegen-crash/regression detection now, and cross-backend divergence once TS lands.
+
+`python tools/regress.py` → **57 corpus + 12 diagnostic + 5 sandbox tests + 12-program
+fuzz smoke, all green.** Docs updated: README (layout, roadmap), CLAUDE.md.
+
+**Next (roadmap):** land the TypeScript backend (#1) — it flips both harness lanes
+from pending to a live cross-backend diff; then LLM authoring eval (#8).
+
+---
+
 ## 2026-07-27 — Sandbox `check` in a subprocess (roadmap #6)
 
 `pedroc check` used to `exec` generated code **in-process** and `eval` every
