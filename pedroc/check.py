@@ -8,9 +8,16 @@ Reports, as data:
 
 An LLM emits Pedro, runs this, reads the JSON, and fixes — instead of guessing.
 
-NOTE: this executes generated code in-process. Fine for trusted local use, but
-must be sandboxed before running untrusted input. (Tracked in WORKLOG.)
+The generated program is run in a SUBPROCESS with a wall-clock timeout and a
+restricted environment (see `pedroc/_expect_runner.py`), so untrusted or
+non-terminating Pedro can only hang or crash that child — never the compiler.
+Timeouts and crashes are surfaced as structured results, not as a parent hang.
 """
+import json
+import os
+import subprocess
+import sys
+
 from .lexer import tokenize
 from .parser import Parser
 from .errors import PedroSyntaxError, PedroNameError
@@ -19,6 +26,16 @@ from . import nodes as N
 from .codegen_python import generate, _gen_expr
 
 _CMP = {"==", "!=", "<", "<=", ">", ">="}
+
+# Wall-clock budget for running a program's expect block, in seconds. A well
+# behaved corpus program runs in milliseconds; this only bites infinite loops.
+DEFAULT_TIMEOUT = 10.0
+
+_RUNNER = os.path.join(os.path.dirname(os.path.abspath(__file__)), "_expect_runner.py")
+
+# Environment variables the sandboxed child is allowed to inherit. Notably absent:
+# PYTHONPATH (so it can't import project code) and anything app-specific.
+_ENV_ALLOW = ("PATH", "SYSTEMROOT", "LANG", "LC_ALL", "LC_CTYPE", "TMPDIR", "TEMP", "TMP")
 
 
 def _snippet(source, line, col):
@@ -82,7 +99,7 @@ def _strip_parens(s):
     return s[1:-1] if s.startswith("(") and s.endswith(")") else s
 
 
-def check(source, filename="<pedro>", target="python"):
+def check(source, filename="<pedro>", target="python", timeout=DEFAULT_TIMEOUT):
     report = {
         "ok": False,
         "file": filename,
@@ -118,62 +135,35 @@ def check(source, filename="<pedro>", target="python"):
         return report
 
     code = generate(program, filename)
-    ns = {"__name__": "pedroc_check"}
-    try:
-        exec(compile(code, filename, "exec"), ns)
-    except Exception as e:  # a failure loading generated code is a compiler bug
-        report["errors"].append({"line": 0, "code": "codegen-error", "message": str(e), "hint": None})
+    steps = _build_steps(program)
+    run = _run_expectations(code, steps, timeout)
+
+    if run["load_error"] is not None:
+        report["errors"].append({"line": 0, "code": "codegen-error", "message": run["load_error"], "hint": None})
         report["summary"] = "internal error while loading generated code"
         return report
+    if run["crash"] is not None:
+        report["status"] = "error"
+        report["errors"].append({"line": 0, "code": "runtime-error", "message": run["crash"], "hint": None})
+        report["summary"] = f"execution crashed: {run['crash']}"
+        return report
 
-    pedro_error = ns.get("PedroError", Exception)
-    n_pass = n_total = 0
-    for it in program.items:
-        if not isinstance(it, N.Expect):
-            continue
-        for item in it.items:
-            kind = item[0]
-            if kind == "given":
-                try:
-                    ns[item[1]] = eval(_gen_expr(item[2]), ns)
-                except Exception as e:
-                    report["errors"].append({"line": 0, "code": "given-error", "message": str(e), "hint": None})
-                continue
+    for msg in run["given_errors"]:
+        report["errors"].append({"line": 0, "code": "given-error", "message": msg, "hint": None})
+    report["expectations"] = run["expectations"]
 
-            n_total += 1
-            if kind == "assert":
-                a = item[1]
-                expr = _gen_expr(a)
-                passed = False
-                detail = None
-                try:
-                    passed = bool(eval(expr, ns))
-                    if not passed and isinstance(a, N.BinOp) and a.op in _CMP:
-                        lv = eval(_gen_expr(a.left), ns)
-                        rv = eval(_gen_expr(a.right), ns)
-                        detail = f"got {lv!r}, expected {a.op} {rv!r}"
-                except Exception as e:
-                    detail = f"error: {e}"
-                text = _strip_parens(expr)
-            else:  # fails
-                call = _gen_expr(item[1])
-                msg = item[2]
-                passed = False
-                detail = None
-                try:
-                    eval(call, ns)
-                    detail = f"expected failure {msg!r}, but it returned normally"
-                except pedro_error as e:
-                    if str(e) == msg:
-                        passed = True
-                    else:
-                        detail = f"failed with {str(e)!r}, expected {msg!r}"
-                except Exception as e:
-                    detail = f"raised {type(e).__name__}: {e}, expected failure {msg!r}"
-                text = f"{_strip_parens(call)} fails with {msg!r}"
+    n_total = sum(1 for s in steps if s["kind"] != "given")
+    n_pass = sum(1 for x in run["expectations"] if x["passed"])
 
-            n_pass += 1 if passed else 0
-            report["expectations"].append({"text": text, "passed": passed, "detail": detail})
+    if run["timed_out"]:
+        report["status"] = "timeout"
+        report["ok"] = False
+        where = f" while running {run['hung']!r}" if run["hung"] else ""
+        report["summary"] = (
+            f"execution timed out after {timeout:g}s (possible infinite loop){where}; "
+            f"{n_pass}/{n_total} expectations passed before timeout"
+        )
+        return report
 
     report["ok"] = (not report["errors"]) and (not report["holes"]) and (n_pass == n_total)
     parts = [f"{n_pass}/{n_total} expectations passed"]
@@ -181,3 +171,87 @@ def check(source, filename="<pedro>", target="python"):
         parts.append(f"{len(report['holes'])} unresolved hole(s)")
     report["summary"] = "; ".join(parts)
     return report
+
+
+def _build_steps(program):
+    """Render each expect item to the pre-computed strings the sandboxed runner
+    needs, so the child process needs no pedroc imports. Order is preserved so a
+    `given` binding is visible to later expectations."""
+    steps = []
+    for it in program.items:
+        if not isinstance(it, N.Expect):
+            continue
+        for item in it.items:
+            kind = item[0]
+            if kind == "given":
+                steps.append({"kind": "given", "name": item[1], "expr": _gen_expr(item[2])})
+            elif kind == "assert":
+                a = item[1]
+                expr = _gen_expr(a)
+                cmp = None
+                if isinstance(a, N.BinOp) and a.op in _CMP:
+                    cmp = {"left": _gen_expr(a.left), "right": _gen_expr(a.right), "op": a.op}
+                steps.append({"kind": "assert", "expr": expr, "text": _strip_parens(expr), "cmp": cmp})
+            else:  # fails
+                call = _gen_expr(item[1])
+                msg = item[2]
+                steps.append({"kind": "fails", "call": call, "msg": msg,
+                              "text": f"{_strip_parens(call)} fails with {msg!r}"})
+    return steps
+
+
+def _restricted_env():
+    env = {k: os.environ[k] for k in _ENV_ALLOW if k in os.environ}
+    env["PYTHONDONTWRITEBYTECODE"] = "1"
+    env["PYTHONIOENCODING"] = "utf-8"
+    return env
+
+
+def _run_expectations(code, steps, timeout):
+    """Run the generated program's expect block in a sandboxed subprocess and
+    collect per-step results. Never hangs or raises: a non-terminating program is
+    reported via `timed_out`, a crashing one via `crash`."""
+    result = {"expectations": [], "given_errors": [], "load_error": None,
+              "crash": None, "timed_out": False, "hung": None}
+    payload = json.dumps({"code": code, "steps": steps})
+    try:
+        proc = subprocess.run(
+            [sys.executable, _RUNNER],
+            input=payload, capture_output=True, text=True,
+            timeout=timeout, env=_restricted_env(), cwd=os.path.dirname(_RUNNER),
+        )
+        out, err, timed_out, rc = proc.stdout, proc.stderr, False, proc.returncode
+    except subprocess.TimeoutExpired as e:
+        out = e.stdout.decode("utf-8", "replace") if isinstance(e.stdout, bytes) else (e.stdout or "")
+        err = e.stderr.decode("utf-8", "replace") if isinstance(e.stderr, bytes) else (e.stderr or "")
+        timed_out, rc = True, None
+
+    records = []
+    for ln in out.splitlines():
+        ln = ln.strip()
+        if not ln:
+            continue
+        try:
+            records.append(json.loads(ln))
+        except ValueError:
+            pass  # ignore a torn final line from a killed child
+
+    for rec in records:
+        t = rec.get("t")
+        if t == "load-error":
+            result["load_error"] = rec.get("message", "")
+        elif t == "given-error":
+            result["given_errors"].append(rec.get("message", ""))
+        elif t == "exp":
+            result["expectations"].append(
+                {"text": rec.get("text"), "passed": bool(rec.get("passed")), "detail": rec.get("detail")})
+
+    if timed_out:
+        result["timed_out"] = True
+        # The first step with no emitted record is the one still running.
+        if len(records) < len(steps):
+            result["hung"] = steps[len(records)].get("text") or steps[len(records)].get("expr")
+    elif result["load_error"] is None and rc not in (0, None):
+        detail = (err or "").strip().splitlines()
+        result["crash"] = detail[-1] if detail else f"runner exited with code {rc}"
+    return result

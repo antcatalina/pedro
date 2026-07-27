@@ -5,6 +5,53 @@ resume cleanly across sessions.
 
 ---
 
+## 2026-07-27 — Sandbox `check` in a subprocess (roadmap #6)
+
+`pedroc check` used to `exec` generated code **in-process** and `eval` every
+expectation in the parent — fine for the trusted corpus, but a non-terminating
+program (`while x is at least 0: increase x by 1`) would hang the whole compiler,
+and untrusted Pedro could run arbitrary code in-process. Now the generated program
+runs in a **separate Python process** with a wall-clock timeout and a restricted
+environment.
+
+**How.** New `pedroc/_expect_runner.py` is a tiny stdlib-only script (no pedroc
+imports, invoked by file path so the package isn't even importable to it). The
+parent renders every expect item to plain expression strings (`_build_steps`), ships
+`{code, steps}` as JSON over stdin, and reads back **newline-delimited JSON**, one
+record per completed step, each `flush`ed so partial progress survives a SIGKILL.
+`_run_expectations` in `check.py` runs it via `subprocess.run(..., timeout=,
+env=_restricted_env(), capture_output=True)`. The restricted env drops `PYTHONPATH`
+and app vars, keeping only a small allowlist (`PATH`, locale, temp dirs).
+
+**Structured outcomes, not hangs.**
+- **timeout** (infinite loop): `subprocess.TimeoutExpired`, child SIGKILLed;
+  report gets `status:"timeout"`, `ok:false`, and a summary naming the expectation
+  that hung (the first step with no emitted record) and how many passed before it.
+- **crash** (child exits non-zero without loading cleanly): `status:"error"` + a
+  `runtime-error` diagnostic carrying the last stderr line.
+- **load-error** (generated code won't import): unchanged `codegen-error` behavior.
+
+**Identical for well-behaved programs.** Same pass/fail and the same `got X,
+expected Y` / `fails with` details — the runner replicates the old per-step logic
+verbatim, just in the child. Normal reports carry **no** `status` key, so the
+compact JSON for the whole green corpus is byte-for-byte what it was.
+
+Default timeout `DEFAULT_TIMEOUT = 10.0s` (per-file), overridable via
+`check(..., timeout=)`.
+
+**Tests.** New `tests/test_sandbox.py` (pytest-shaped + self-runnable, wired into
+`tools/regress.py`): a deliberately non-terminating program is reported as a
+`timeout` in ~2s without hanging the parent; a well-behaved program keeps its exact
+pass/fail + `got X, expected Y` detail and carries no `status`; `fails with` and
+`given` bindings still work across the process boundary. `python tools/regress.py`
+→ **57 corpus expectations + 12 diagnostic + 5 sandbox tests, all green.**
+
+Docs updated: README, `docs/language-card.md`, CLAUDE.md.
+
+**Next (roadmap):** differential Python/TS testing (#7); LLM authoring eval (#8).
+
+---
+
 ## 2026-07-27 — Diagnostics / oracle quality (roadmap #5)
 
 Sharpened `pedroc`'s diagnostics, since errors are the prompts the authoring model
@@ -108,7 +155,8 @@ to `master` periodically.
 4. **Control-flow completeness** — `match`/`case` and `try`/`on failure as err`.
 5. **Diagnostics / oracle quality** — column numbers, did-you-mean, richer
    `pedroc check --json` (fix suggestions, capability surface).
-6. **Sandbox `check`** — run generated code in a subprocess with a timeout.
+6. **Sandbox `check`** — DONE (2026-07-27); run generated code in a subprocess
+   with a timeout. See the dated entry below.
 7. **Differential + fuzz testing** — compile each corpus program to Python AND
    TypeScript, run both, assert identical results; grammar-based fuzzer.
 8. **LLM authoring eval harness** — measure how reliably a model authors correct
@@ -277,8 +325,8 @@ because the loop — not the compiler — is what makes a language good for LLMs
    `check` should also report the declared capability surface.
 3. **Second target: TypeScript codegen** from the same AST, to prove
    retargeting from one source.
-4. **Sandbox `check`.** It currently `exec`s generated code in-process — fine for
-   trusted local use, unsafe for untrusted input. Sandbox before any hosted use.
+4. **Sandbox `check`.** DONE (2026-07-27) — runs generated code in a subprocess
+   with a wall-clock timeout and a restricted env.
 5. **Reconcile README** with the new framing (retire "Claude is the compiler" in
    the body) and fold everything into `docs/SPEC.md`.
 

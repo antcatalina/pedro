@@ -30,6 +30,11 @@ check it:
      `got X, expected <op> Y`. Fix and re-check.
    - `capabilities[]` → the program's declared capability surface (reserved;
      empty today).
+   - `status` → present only on an abnormal run: `"timeout"` (your program didn't
+     terminate — likely an infinite loop; the summary names the stuck expectation)
+     or `"error"` (it crashed). Your program is run in a sandboxed subprocess with
+     a time budget, so a runaway loop is reported, not hung on. A normal run has no
+     `status` key.
    - The JSON is COMPACT: null/empty fields are omitted, so an absent key means
      null (e.g. no `suggestion` key = no suggestion).
 5. Loop until `ok: true`, then `python -m pedroc build <file>.pedro -o out.py`.

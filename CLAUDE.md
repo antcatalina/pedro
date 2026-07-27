@@ -21,12 +21,14 @@ structured feedback — so the language must stay small, regular, and verifiable
 ## Where things are
 
 - `pedroc/` — the compiler: `lexer.py`, `parser.py`, `nodes.py` (AST),
-  `codegen_python.py`, `check.py` (the oracle), `resolve.py` (name-resolution
+  `codegen_python.py`, `check.py` (the oracle), `_expect_runner.py` (the sandboxed
+  subprocess that runs `expect` blocks), `resolve.py` (name-resolution
   pass → `undefined-name`/`unknown-task`), `suggest.py` (deterministic
   edit-distance "did you mean X?"), `errors.py`, `__main__.py` (CLI),
   `__init__.py` (`compile_source`).
-- `tests/` — `test_diagnostics.py`: structured-diagnostic tests (pytest-shaped but
-  also self-runnable; `tools/regress.py` invokes it).
+- `tests/` — `test_diagnostics.py` (structured-diagnostic tests) and
+  `test_sandbox.py` (subprocess timeout/crash isolation); both are pytest-shaped
+  but also self-runnable, and `tools/regress.py` invokes them.
 - `examples/cookbook/*.pedro` — the regression corpus (22 algorithms).
 - `examples/math.pedro` — integer algorithms. `examples/order_total.pedro` (records)
   and `examples/signup.pedro` (capabilities) are language-designed but **not yet
@@ -108,6 +110,9 @@ otherwise`), `try`/`on failure as err`, typed holes (`todo`), and `expect` with
 `code`s + actionable `hint`s, source `snippet` with `^` caret, nearest-match
 `suggestion` ("did you mean X?") for unknown identifiers/tasks/keywords, and a
 reserved `capabilities` surface; `check --json` is compact (null fields omitted).
+`check` runs the generated program in a **sandboxed subprocess** (wall-clock
+timeout + restricted env, `pedroc/_expect_runner.py`), reporting a non-terminating
+or crashing program as `status:"timeout"`/`"error"` instead of hanging.
 
 **Designed but NOT yet in the compiler** (see `WORKLOG.md` roadmap, highest first):
 TypeScript backend (fully designed, in progress on `agent/dev`), `record`/`enum`

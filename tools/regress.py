@@ -49,6 +49,12 @@ def main():
     if not run_diag_tests():
         all_ok = False
 
+    # ...and the subprocess-sandbox tests (timeout / crash isolation).
+    from tests.test_sandbox import _run as run_sandbox_tests
+    print()
+    if not run_sandbox_tests():
+        all_ok = False
+
     return 0 if all_ok else 1
 
 
