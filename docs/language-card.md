@@ -15,10 +15,23 @@ check it:
 3. If you are unsure of a rule, a value, or a step, **do not guess** — write
    `todo "<what's missing and why>"`. A hole beats a hallucination.
 4. Run `python -m pedroc check <file>.pedro --json` and read the JSON:
-   - `errors[]` → fix the syntax at `line`; follow `hint`.
-   - `holes[]` → resolve it, or ask the user for the missing detail.
+   - `ok` → `true` when there are no errors, no holes, and every expectation
+     passed. That's your goal.
+   - `errors[]` → fix these first. Each carries `code` (stable, machine-readable),
+     `line` + `col` (1-based; `col` points at the offending token), `message`,
+     and often a `hint` (what to do) and a `snippet` (the source line with a `^`
+     caret under the spot). When the fix is a spelling mistake you also get a
+     `suggestion` — the nearest known name/keyword ("did you mean X?"); if it's
+     right, just apply it. Common codes: `unexpected-token`, `expected-expression`,
+     `bad-indentation`, `unterminated-string`, `undefined-name`, `unknown-task`,
+     `empty-match`, `case-after-otherwise`.
+   - `holes[]` → resolve each `todo`, or ask the user for the missing detail.
    - `expectations[].passed == false` → your logic is wrong; `detail` gives
      `got X, expected <op> Y`. Fix and re-check.
+   - `capabilities[]` → the program's declared capability surface (reserved;
+     empty today).
+   - The JSON is COMPACT: null/empty fields are omitted, so an absent key means
+     null (e.g. no `suggestion` key = no suggestion).
 5. Loop until `ok: true`, then `python -m pedroc build <file>.pedro -o out.py`.
 
 ## Program shape

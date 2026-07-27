@@ -5,6 +5,48 @@ resume cleanly across sessions.
 
 ---
 
+## 2026-07-27 — Diagnostics / oracle quality (roadmap #5)
+
+Sharpened `pedroc`'s diagnostics, since errors are the prompts the authoring model
+self-corrects from — better errors ⇒ higher authoring reliability.
+
+**Columns everywhere.** The lexer now emits `(type, value, line, col)` 4-tuples with
+absolute 1-based columns (indentation folded back in), `PedroSyntaxError` carries
+`col` + `suggestion`, and the parser threads `col` into every raise site. `build`
+and `check` both report `line:col`.
+
+**Did-you-mean.** New `pedroc/suggest.py` — a pure, deterministic Levenshtein
+`nearest()` (bounded edit distance, deterministic tie-break). Wired into the
+top-level "expected task/expect" error and `is at least/most`.
+
+**Name resolution.** New `pedroc/resolve.py` runs after a successful parse and finds
+`undefined-name` (unknown identifier) and `unknown-task` (unknown call target), each
+with a nearest-match suggestion. Scoping is flow-insensitive (Python function scope:
+every name bound anywhere in a task counts as declared) so it never false-flags a
+use-before-assign or a branch-local binding — it flags only names declared *nowhere*,
+i.e. typos. `Name`/`Call` AST nodes gained optional source `line`/`col`.
+
+**Richer, compact `check --json`.** Each diagnostic now carries `col`, `suggestion`,
+and a `snippet` (offending line + `^` caret); the report gained a reserved
+`capabilities` surface (empty until capabilities land). The JSON is emitted COMPACT
+(no indent, null/empty fields omitted) because it is consumed inside a model's
+context window. New specific codes with hints: `expected-expression`,
+`unterminated-string` (hint), `unexpected-character` (hint).
+
+**Tests.** New `tests/test_diagnostics.py` feeds intentionally-broken snippets to
+`pedroc.check` and asserts the structured diagnostics (code, line, col, hint,
+suggestion). Pytest isn't installed in the agent env, so the file is pytest-shaped
+*and* self-runnable (`python3 tests/test_diagnostics.py`); `tools/regress.py` now
+invokes it, so CI covers it. `python tools/regress.py` → **57 corpus expectations +
+12 diagnostic tests, all green.** No corpus program trips the resolver.
+
+Docs updated: README, `docs/language-card.md` ("read the JSON" section), CLAUDE.md.
+
+**Next (roadmap):** did-you-mean for undeclared capabilities once capabilities land;
+sandbox `check` (roadmap #6); differential Python/TS testing (#7).
+
+---
+
 ## 2026-07-26 — `match`/`case` + `try`/`on failure` (control-flow, roadmap #4)
 
 Added two control-flow constructs to `pedroc` (Python backend — the TS backend

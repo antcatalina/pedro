@@ -42,6 +42,13 @@ def main():
                 if not x["passed"]:
                     print(f"        FAIL {x['text']}  ({x['detail']})")
     print(f"\n{'PASS' if all_ok else 'FAIL'}: {total_expectations} expectations checked across the corpus")
+
+    # Also run the structured-diagnostics tests (pytest not required).
+    from tests.test_diagnostics import _run as run_diag_tests
+    print()
+    if not run_diag_tests():
+        all_ok = False
+
     return 0 if all_ok else 1
 
 

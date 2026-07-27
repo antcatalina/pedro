@@ -21,8 +21,12 @@ structured feedback — so the language must stay small, regular, and verifiable
 ## Where things are
 
 - `pedroc/` — the compiler: `lexer.py`, `parser.py`, `nodes.py` (AST),
-  `codegen_python.py`, `check.py` (the oracle), `errors.py`, `__main__.py` (CLI),
+  `codegen_python.py`, `check.py` (the oracle), `resolve.py` (name-resolution
+  pass → `undefined-name`/`unknown-task`), `suggest.py` (deterministic
+  edit-distance "did you mean X?"), `errors.py`, `__main__.py` (CLI),
   `__init__.py` (`compile_source`).
+- `tests/` — `test_diagnostics.py`: structured-diagnostic tests (pytest-shaped but
+  also self-runnable; `tools/regress.py` invokes it).
 - `examples/cookbook/*.pedro` — the regression corpus (22 algorithms).
 - `examples/math.pedro` — integer algorithms. `examples/order_total.pedro` (records)
   and `examples/signup.pedro` (capabilities) are language-designed but **not yet
@@ -100,7 +104,10 @@ maps, `let`/reassign, `increase`/`decrease`, `when`/`otherwise`, `while`, `repea
 `followed by`, the collection operations (`count of`, `item at`, `filter`, `sum of`,
 `numbers from`, …), string interpolation, `fail with`, `match`/`case` (+ `case
 otherwise`), `try`/`on failure as err`, typed holes (`todo`), and `expect` with
-`given`/`fails with`. **Target:** Python.
+`given`/`fails with`. **Target:** Python. **Diagnostics:** `line:col`, stable
+`code`s + actionable `hint`s, source `snippet` with `^` caret, nearest-match
+`suggestion` ("did you mean X?") for unknown identifiers/tasks/keywords, and a
+reserved `capabilities` surface; `check --json` is compact (null fields omitted).
 
 **Designed but NOT yet in the compiler** (see `WORKLOG.md` roadmap, highest first):
 TypeScript backend (fully designed, in progress on `agent/dev`), `record`/`enum`
