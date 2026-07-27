@@ -13,11 +13,42 @@ must be sandboxed before running untrusted input. (Tracked in WORKLOG.)
 """
 from .lexer import tokenize
 from .parser import Parser
-from .errors import PedroSyntaxError
+from .errors import PedroSyntaxError, PedroNameError
+from .resolve import resolve
 from . import nodes as N
 from .codegen_python import generate, _gen_expr
 
 _CMP = {"==", "!=", "<", "<=", ">", ">="}
+
+
+def _snippet(source, line, col):
+    """The offending source line plus a caret line pointing at `col` (1-based),
+    joined by a newline — e.g. `let x = \\n        ^`. Returns None if unavailable."""
+    if not line or col is None:
+        return None
+    lines = source.split("\n")
+    if line < 1 or line > len(lines):
+        return None
+    text = lines[line - 1]
+    caret = " " * (col - 1) + "^"
+    return text + "\n" + caret
+
+
+def _diag(source, e):
+    """Build a COMPACT diagnostic dict from a PedroSyntaxError/PedroNameError.
+    Null/empty fields are omitted to save tokens in the model's context; an absent
+    key therefore means null. `col` is 1-based; `snippet` carries a caret."""
+    d = {"code": e.code, "line": e.line, "message": e.message}
+    if getattr(e, "col", None) is not None:
+        d["col"] = e.col
+    if getattr(e, "hint", None):
+        d["hint"] = e.hint
+    if getattr(e, "suggestion", None):
+        d["suggestion"] = e.suggestion
+    snip = _snippet(source, e.line, getattr(e, "col", None))
+    if snip:
+        d["snippet"] = snip
+    return d
 
 
 def _collect_holes(program):
@@ -56,6 +87,7 @@ def check(source, filename="<pedro>", target="python"):
         "ok": False,
         "file": filename,
         "target": target,
+        "capabilities": [],   # declared capability surface (none yet — reserved)
         "errors": [],
         "holes": [],
         "expectations": [],
@@ -66,8 +98,16 @@ def check(source, filename="<pedro>", target="python"):
         tokens = tokenize(source)
         program = Parser(tokens, filename).parse()
     except PedroSyntaxError as e:
-        report["errors"].append({"line": e.line, "code": e.code, "message": e.message, "hint": e.hint})
-        report["summary"] = f"syntax error at line {e.line}: {e.message}"
+        report["errors"].append(_diag(source, e))
+        report["summary"] = f"syntax error at line {e.line}:{e.col}: {e.message}"
+        return report
+
+    name_errors = resolve(program)
+    if name_errors:
+        for e in name_errors:
+            report["errors"].append(_diag(source, e))
+        first = name_errors[0]
+        report["summary"] = f"{len(name_errors)} unresolved name(s); first at line {first.line}:{first.col}: {first.message}"
         return report
 
     for h in _collect_holes(program):

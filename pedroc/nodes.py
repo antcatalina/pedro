@@ -148,12 +148,16 @@ class Bool:
 @dataclass
 class Name:
     value: str
+    line: Optional[int] = None   # source position, for resolver diagnostics
+    col: Optional[int] = None
 
 
 @dataclass
 class Call:
     func: str
     args: list
+    line: Optional[int] = None   # source position, for resolver diagnostics
+    col: Optional[int] = None
 
 
 @dataclass

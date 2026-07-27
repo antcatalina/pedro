@@ -41,7 +41,10 @@ def _cmd_build(args):
     try:
         code = compile_source(_read(infile), filename=os.path.basename(infile), target=target)
     except PedroSyntaxError as e:
-        print(f"{infile}:{e.line}: error [{e.code}]: {e.message}", file=sys.stderr)
+        loc = f"{e.line}" if e.col is None else f"{e.line}:{e.col}"
+        print(f"{infile}:{loc}: error [{e.code}]: {e.message}", file=sys.stderr)
+        if e.suggestion:
+            print(f"  did you mean {e.suggestion!r}?", file=sys.stderr)
         return 1
     except (OSError, ValueError) as e:
         print(f"error: {e}", file=sys.stderr)
@@ -80,7 +83,8 @@ def _cmd_check(args):
         return 1
     report = check(source, filename=os.path.basename(infile), target=target)
     if as_json:
-        print(json.dumps(report, indent=2))
+        # Compact on purpose: this is read inside a model's context window.
+        print(json.dumps(report, separators=(",", ":")))
     else:
         _print_human(report)
     return 0 if report["ok"] else 1
@@ -89,9 +93,15 @@ def _cmd_check(args):
 def _print_human(report):
     print(f"{report['file']}: {report['summary']}")
     for err in report["errors"]:
-        print(f"  error [{err['code']}] line {err['line']}: {err['message']}")
+        loc = f"line {err['line']}" if err.get("col") is None else f"line {err['line']}:{err['col']}"
+        print(f"  error [{err['code']}] {loc}: {err['message']}")
         if err.get("hint"):
             print(f"    hint: {err['hint']}")
+        if err.get("suggestion"):
+            print(f"    did you mean {err['suggestion']!r}?")
+        if err.get("snippet"):
+            for sl in err["snippet"].split("\n"):
+                print(f"    {sl}")
     for hole in report["holes"]:
         print(f"  hole  line {hole['line']}: {hole['message']}")
     for exp in report["expectations"]:

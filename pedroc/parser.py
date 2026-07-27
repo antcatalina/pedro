@@ -8,6 +8,7 @@ keyword-led collection operations (`count of`, `item at .. in ..`,
 `numbers from .. to ..`, filter/collect/sum/count/find, ...).
 """
 from .errors import PedroSyntaxError
+from .suggest import nearest
 from . import nodes as N
 
 
@@ -29,6 +30,9 @@ class Parser:
 
     def _line(self):
         return self.toks[self.i][2]
+
+    def _col(self):
+        return self.toks[self.i][3]
 
     def _peek(self, n=1):
         return self.toks[self.i + n]
@@ -55,7 +59,7 @@ class Parser:
                 hint = "a block header ends with ':' followed by an indented body"
             elif val == "returns":
                 hint = "declare a task's result type after ')': `task f(...) returns <type>:`"
-            raise PedroSyntaxError(t[2], f"expected {want}, found {found}", code="unexpected-token", hint=hint)
+            raise PedroSyntaxError(t[2], f"expected {want}, found {found}", code="unexpected-token", hint=hint, col=t[3])
         return self._advance()
 
     def _skip_newlines(self):
@@ -75,7 +79,12 @@ class Parser:
                 items.append(self._parse_expect())
             else:
                 t = self._cur()
-                raise PedroSyntaxError(t[2], f"expected 'task' or 'expect', found {t[1]!r}")
+                raise PedroSyntaxError(
+                    t[2], f"expected 'task' or 'expect', found {t[1]!r}",
+                    code="unexpected-token", col=t[3],
+                    hint="top-level items are `task <name>(...) returns <type>:` and `expect:`",
+                    suggestion=nearest(t[1], ("task", "expect")),
+                )
             self._skip_newlines()
         return N.Program(target=target, items=items)
 
@@ -315,7 +324,7 @@ class Parser:
             if saw_otherwise:
                 raise PedroSyntaxError(
                     self._line(), "no case may follow 'case otherwise'",
-                    code="case-after-otherwise",
+                    code="case-after-otherwise", col=self._col(),
                     hint="'case otherwise:' is the default and must be the last arm",
                 )
             self._advance()  # 'case'
@@ -331,7 +340,8 @@ class Parser:
         if not cases:
             raise PedroSyntaxError(
                 self._line(), "a 'match' needs at least one 'case'",
-                code="empty-match", hint="add `case <value>:` arms under the match",
+                code="empty-match", col=self._col(),
+                hint="add `case <value>:` arms under the match",
             )
         self._expect("DEDENT")
         return N.Match(subject=subject, cases=cases)
@@ -413,13 +423,19 @@ class Parser:
             return N.Unary(op="not", operand=node) if negate else node
         if self._is_name("at"):
             self._advance()
-            w = self._expect("NAME")[1]
+            wtok = self._expect("NAME")
+            w = wtok[1]
             if w == "least":
                 op = ">="
             elif w == "most":
                 op = "<="
             else:
-                raise PedroSyntaxError(self._line(), f"expected 'least' or 'most' after 'is at', found {w!r}")
+                raise PedroSyntaxError(
+                    wtok[2], f"expected 'least' or 'most' after 'is at', found {w!r}",
+                    code="unexpected-token", col=wtok[3],
+                    hint="`is at least` means >=, `is at most` means <=",
+                    suggestion=nearest(w, ("least", "most")),
+                )
             if negate:
                 op = "<" if op == ">=" else ">"
             return N.BinOp(op=op, left=left, right=self._parse_add())
@@ -475,15 +491,16 @@ class Parser:
             return self._parse_postfix(N.Str(value=t[1]))
         if t[0] == "NAME":
             val = t[1]
+            line, col = t[2], t[3]
             self._advance()
             if val == "true":
                 node = N.Bool(value=True)
             elif val == "false":
                 node = N.Bool(value=False)
             elif self._is("OP", "("):
-                node = N.Call(func=val, args=self._parse_args())
+                node = N.Call(func=val, args=self._parse_args(), line=line, col=col)
             else:
-                node = N.Name(value=val)
+                node = N.Name(value=val, line=line, col=col)
             return self._parse_postfix(node)
         if t[0] == "OP" and t[1] == "(":
             self._advance()
@@ -510,7 +527,12 @@ class Parser:
                     pairs.append(self._parse_pair())
             self._expect("OP", "}")
             return self._parse_postfix(N.MapLit(pairs=pairs))
-        raise PedroSyntaxError(t[2], f"unexpected token {t[1]!r}")
+        found = repr(t[1]) if t[1] != "" else t[0]
+        raise PedroSyntaxError(
+            t[2], f"unexpected token {found} where an expression was expected",
+            code="expected-expression", col=t[3],
+            hint="an expression is a value: a number, a \"string\", true/false, a name, a call, or a (parenthesized) sub-expression",
+        )
 
     def _parse_pair(self):
         key = self._parse_add()
