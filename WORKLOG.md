@@ -5,6 +5,67 @@ resume cleanly across sessions.
 
 ---
 
+## 2026-07-28 — Capabilities + the adapter layer LANDED (roadmap #3)
+
+Pedro's core differentiator — **auditable by construction** — is real now. A program
+is pure until it declares `use capability <name>`; the set of declarations is its
+**blast radius**, and using a verb whose capability isn't declared is a **compile
+error**, never a silent import. `examples/signup.pedro` (design-only for weeks) now
+compiles and passes `pedroc check` against in-memory mock adapters, and a second
+effectful example (`examples/cookbook/credentials.pedro`) joins the corpus.
+
+**What landed (Python backend):**
+- **Directives:** `use capability database|http|email|files|time|crypto|random`
+  parse and are enforced. **Verbs emitted today:** `insert into <table> { … }`
+  (database, returns id), `send email to <a> with subject <s> body <b>` (email),
+  `hash <t>` + `verify <t> against <h>` (crypto). Reading a table needs no new verb —
+  a `table` handle is iterable, so `find one … in <table>`, `count of <table>`, and
+  `for each … in <table>` reuse the existing collection path.
+- **Tables:** `table users: User` binds a row type EXPLICITLY (never by pluralizing a
+  name) → `users = database.table("users", User)`. `given <table> is empty` (in an
+  `expect:` block) resets a table for test isolation.
+- **The adapter layer.** Capability calls compile through a swappable
+  `pedro_capabilities` module — one adapter object per capability. Generated code
+  stays clean (`crypto.hash(...)`, `users.insert(...)`, `mailer.send(...)`). The
+  in-memory reference adapters live in `pedroc/adapters.py`; `check` injects that
+  source into its sandboxed subprocess as `pedro_capabilities`, so an effectful
+  program is runnable with zero setup and no real I/O. Repo-root
+  `pedro_capabilities.py` re-exports them so a *built* example runs too (verified:
+  `build examples/signup.pedro` → run → `all expectations passed ✓`).
+- **Contract #7 (collision rename).** The adapter is imported under a non-colliding
+  alias when the default name is a user identifier: signup's `email` parameter forces
+  `from pedro_capabilities import database, email as mailer, crypto` — the *import* is
+  renamed, never the user's identifier. Deterministic (default → fallback → suffix).
+- **Enforcement + surface.** New `pedroc/capabilities.py` holds the metadata and the
+  enforcement pass (run in both `compile_source` and `check`): `unknown-capability`
+  (with did-you-mean), `undeclared-capability` (verb used without its `use`),
+  `unknown-record` (bad table row type). `check --json` reports the declared surface
+  as its (previously reserved) `capabilities` field, e.g.
+  `"capabilities":["database","email","crypto"]`.
+
+**Design notes.** `CapCall(cap, verb, args)` is a pure EXPRESSION node; a bare verb
+statement (`send …`) parses as `ExprStmt(CapCall(...))`, so only the four
+expr-walkers (resolve/annotate/codegen) needed to learn it. `Use`/`Table` are
+top-level items. Verbs are reserved words in their positions (`hash`/`insert`/
+`send`/`verify`) — documented in the language card.
+
+**TypeScript: PENDING.** The TS backend has no JS reference-adapter + injection path
+yet, so `codegen_ts.generate` raises on a capability program and the corpus/differential
+TS lanes SKIP them (Python-only, clearly noted). Everything else stays green on both.
+
+**Regression.** `python tools/regress.py --slow` → **72 corpus expectations** (Python)
++ 10/10 TS (2 capability programs skipped) + **21 diagnostic tests** (5 new capability
+tests: undeclared/unknown/table-needs-db/surface-reported/alias-rename) + 5 sandbox +
+200-program fuzz over python+typescript + full differential, all green. Output verified
+byte-identical on recompile.
+
+**Next (roadmap):** the remaining capability verbs (db `update`/`delete`, `http`,
+`files`, `time`, `random`) + the TypeScript adapter path; then the
+`capability-permission-bridge` (`pedroc permissions`, now unblocked) and
+`pedroc check --targets`.
+
+---
+
 ## 2026-07-28 — `record` and `enum` types LANDED (roadmap #2)
 
 Pedro can model data now. `record` and `enum` are top-level declarations that

@@ -13,6 +13,7 @@ Binary expressions are fully parenthesized so emitted precedence always matches
 the parsed AST — deterministic and never wrong, at the cost of a few parens.
 """
 from . import nodes as N
+from .capabilities import declared_capabilities
 
 TYPE_MAP = {"text": "string", "whole": "number", "number": "number", "flag": "boolean", "nothing": "void"}
 CONVERT_MAP = {"text": "String", "whole": "__whole", "number": "Number"}
@@ -151,6 +152,12 @@ def _fresh_repeat():
 
 def generate(program, filename="<pedro>"):
     global _records, _typenames
+    # Capabilities/adapters are Python-only for now (no JS reference adapter +
+    # injection yet) — see WORKLOG. Fail loudly so the differential/corpus lanes
+    # SKIP capability programs rather than emitting broken TypeScript.
+    if declared_capabilities(program):
+        raise NotImplementedError(
+            "the TypeScript backend does not support capabilities yet (Python-only)")
     _subject_counter[0] = 0  # reset per call → deterministic temp names
     _repeat_counter[0] = 0
     records = [it for it in program.items if isinstance(it, N.Record)]

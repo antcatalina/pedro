@@ -38,6 +38,23 @@ class PedroTypeError(Exception):
         super().__init__(f"{where}: {message}")
 
 
+class PedroCapabilityError(Exception):
+    """A capability/effect error found after parsing: an unknown capability name,
+    or a verb used without `use capability …` for it. This is the enforcement that
+    makes Pedro auditable — undeclared power is a compile error, not a silent
+    import. Carries `line`/`col`/`code`/`hint`/`suggestion` like the others."""
+
+    def __init__(self, line, col, message, code, hint=None, suggestion=None):
+        self.line = line
+        self.col = col
+        self.message = message
+        self.code = code
+        self.hint = hint
+        self.suggestion = suggestion
+        where = f"line {line}" if col is None else f"line {line}:{col}"
+        super().__init__(f"{where}: {message}")
+
+
 class PedroNameError(Exception):
     """A name-resolution error (unknown identifier / task), found by the resolver
     pass after a successful parse. Carries `line`/`col`/`suggestion` like a syntax

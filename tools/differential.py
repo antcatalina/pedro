@@ -30,6 +30,7 @@ def corpus():
     files = sorted(glob.glob(os.path.join(ROOT, "examples", "cookbook", "*.pedro")))
     files.append(os.path.join(ROOT, "examples", "math.pedro"))
     files.append(os.path.join(ROOT, "examples", "order_total.pedro"))
+    files.append(os.path.join(ROOT, "examples", "signup.pedro"))
     return files
 
 
@@ -68,6 +69,10 @@ def run(verbose=False):
         if not have_ts:
             if verbose:
                 print(f"[py  ] {name} — {len(py['expectations'])} expectations (TS pending)")
+            continue
+        if "use capability" in source:  # capabilities are Python-only for now
+            if verbose:
+                print(f"[py  ] {name} — {len(py['expectations'])} expectations (TS skipped: capabilities)")
             continue
         ts = run_typescript(source, filename=os.path.basename(path))
         if not ts["ran"]:

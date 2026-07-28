@@ -14,6 +14,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from pedroc import compile_source
 from pedroc.check import check
 from pedroc.suggest import nearest, edit_distance
 
@@ -140,6 +141,55 @@ def test_valid_record_and_enum_program_is_clean():
     report = check(_REC + "    at({ x: 4, y: 5 }) == 4\n", filename="<test>")
     assert report["ok"] is True
     assert report["errors"] == []
+
+
+# --- capabilities -----------------------------------------------------------
+
+def test_undeclared_capability_is_a_compile_error():
+    src = ('target: python\n\ntask f(p: text) returns text:\n    return hash p\n'
+           '\nexpect:\n    f("x") is present\n')
+    _, err = _first_error(src)
+    assert err["code"] == "undeclared-capability"
+    assert "crypto" in err["message"]
+    assert err["hint"] == "add `use capability crypto` at the top of the program"
+
+
+def test_unknown_capability_suggests_nearest():
+    src = ('target: python\n\nuse capability databse\n\n'
+           'task f(x: whole) returns whole:\n    return x\n\nexpect:\n    f(1) == 1\n')
+    _, err = _first_error(src)
+    assert err["code"] == "unknown-capability"
+    assert err["suggestion"] == "database"
+
+
+def test_table_needs_database_capability():
+    src = ('target: python\n\nrecord R:\n    a: whole\n\ntable rs: R\n\n'
+           'task f(x: whole) returns whole:\n    return x\n\nexpect:\n    f(1) == 1\n')
+    _, err = _first_error(src)
+    assert err["code"] == "undeclared-capability"
+    assert "database" in err["message"]
+
+
+def test_capability_surface_is_reported_and_program_runs():
+    src = ('target: python\n\nuse capability crypto\n\n'
+           'task same(a: text, b: text) returns flag:\n'
+           '    return hash a is hash b\n\n'
+           'expect:\n    same("x", "x") == true\n    same("x", "y") == false\n')
+    report = check(src, filename="<test>")
+    assert report["capabilities"] == ["crypto"]
+    assert report["ok"] is True
+
+
+def test_email_adapter_import_renamed_on_collision():
+    # `email` is a parameter, so the email capability must import under an alias
+    # (mailer) — the import is renamed, never the user's identifier.
+    src = ('target: python\n\nuse capability email\n\n'
+           'task notify(email: text) returns nothing:\n'
+           '    send email to email with subject "hi" body "there"\n\n'
+           'expect:\n    notify("a@b.c") is nothing\n')
+    out = compile_source(src, filename="<test>")
+    assert "from pedro_capabilities import email as mailer" in out
+    assert "mailer.send(to=email" in out
 
 
 # --- report shape -----------------------------------------------------------

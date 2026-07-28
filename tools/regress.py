@@ -30,7 +30,15 @@ def corpus():
     files = sorted(glob.glob(os.path.join(ROOT, "examples", "cookbook", "*.pedro")))
     files.append(os.path.join(ROOT, "examples", "math.pedro"))
     files.append(os.path.join(ROOT, "examples", "order_total.pedro"))
+    files.append(os.path.join(ROOT, "examples", "signup.pedro"))
     return files
+
+
+def _declares_capabilities(path):
+    """Capability programs are Python-only for now (the TS backend can't emit the
+    adapter layer yet), so the TypeScript lane skips them — see WORKLOG."""
+    with open(path, "r", encoding="utf-8") as f:
+        return "use capability" in f.read()
 
 
 def main(argv=None):
@@ -67,8 +75,10 @@ def main(argv=None):
     from tools.backends import run_typescript, ts_available
     print()
     if ts_available():
+        ts_files = [p for p in corpus() if not _declares_capabilities(p)]
+        skipped = len(corpus()) - len(ts_files)
         ts_ok = 0
-        for path in corpus():
+        for path in ts_files:
             with open(path, "r", encoding="utf-8") as f:
                 res = run_typescript(f.read(), filename=os.path.basename(path))
             name = os.path.relpath(path, ROOT)
@@ -78,8 +88,9 @@ def main(argv=None):
             else:
                 all_ok = False
                 print(f"[FAIL] {name} — typescript lane: {res.get('error')}")
-        print(f"\n{'PASS' if ts_ok == len(corpus()) else 'FAIL'}: "
-              f"{ts_ok}/{len(corpus())} corpus programs green on the TypeScript backend")
+        note = f" ({skipped} capability program(s) Python-only, skipped)" if skipped else ""
+        print(f"\n{'PASS' if ts_ok == len(ts_files) else 'FAIL'}: "
+              f"{ts_ok}/{len(ts_files)} corpus programs green on the TypeScript backend{note}")
     else:
         print("SKIP: TypeScript lane (node not on PATH)")
 

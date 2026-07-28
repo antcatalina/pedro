@@ -30,6 +30,9 @@ def resolve(program):
     # Record and enum names resolve as globals: an enum is referenced as
     # `Color.red` (an Attr on `Name("Color")`), so the bare name must be known.
     type_names = {it.name for it in program.items if isinstance(it, (N.Record, N.Enum))}
+    # Table names resolve as globals: `table users: User` binds `users` to a table
+    # handle, referenced bare in `find one … in users` / `insert into users …`.
+    table_names = {it.name for it in program.items if isinstance(it, N.Table)}
     errors = []
 
     def report(node, code, message, candidates):
@@ -78,6 +81,9 @@ def resolve(program):
                 check_expr(fv, env)
         elif isinstance(e, N.Convert):
             check_expr(e.expr, env)
+        elif isinstance(e, N.CapCall):
+            for a in e.args:
+                check_expr(a, env)
         elif isinstance(e, N.Builtin):
             for a in e.args:
                 check_expr(a, env)
@@ -97,14 +103,16 @@ def resolve(program):
 
     for it in program.items:
         if isinstance(it, N.Task):
-            env = _GLOBALS | type_names | {p[0] for p in it.params} | _bound_in(it.body)
+            env = _GLOBALS | type_names | table_names | {p[0] for p in it.params} | _bound_in(it.body)
             check_stmts(it.body, env)
         elif isinstance(it, N.Expect):
-            env = _GLOBALS | type_names
+            env = _GLOBALS | type_names | table_names
             for item in it.items:
                 if item[0] == "given":
                     check_expr(item[2], env | task_names)
                     env.add(item[1])
+                elif item[0] == "given-empty":
+                    pass  # the table name is a global; nothing new binds
                 elif item[0] == "assert":
                     check_expr(item[1], env)
                 else:  # fails
@@ -216,7 +224,7 @@ def _bound_in(stmts):
         elif isinstance(e, N.RecordLit):
             for _fn, fv in e.fields:
                 walk_expr(fv)
-        elif isinstance(e, N.Builtin):
+        elif isinstance(e, (N.Builtin, N.CapCall)):
             for a in e.args:
                 walk_expr(a)
 

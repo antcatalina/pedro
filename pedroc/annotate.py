@@ -27,6 +27,9 @@ def annotate(program):
     """Resolve every record literal's `type_name`; return a list of PedroTypeError."""
     records = {it.name: it for it in program.items if isinstance(it, N.Record)}
     tasks = {it.name: it for it in program.items if isinstance(it, N.Task)}
+    # Table name -> its row record type, so `insert into users { … }` types the
+    # record literal by the table's declared row type.
+    tables = {it.name: it.row_type for it in program.items if isinstance(it, N.Table)}
     errors = []
 
     def unwrap(t):
@@ -127,6 +130,14 @@ def annotate(program):
             visit(e.index, None)
         elif isinstance(e, N.Convert):
             visit(e.expr, None)
+        elif isinstance(e, N.CapCall):
+            if e.verb == "insert" and e.args and isinstance(e.args[0], N.Name):
+                table, record = e.args[0], e.args[1]
+                row = tables.get(table.value)
+                visit(record, ("name", row) if row else None)
+            else:
+                for a in e.args:
+                    visit(a, None)
         elif isinstance(e, N.Builtin):
             for a in e.args:
                 visit(a, None)
@@ -157,7 +168,10 @@ def annotate(program):
                     visit(default, ftype)
         elif isinstance(it, N.Expect):
             for item in it.items:
-                # ("given", name, expr) | ("assert", expr) | ("fails", expr, msg)
+                # ("given", name, expr) | ("given-empty", table)
+                # | ("assert", expr) | ("fails", expr, msg)
+                if item[0] == "given-empty":
+                    continue
                 visit(item[2] if item[0] == "given" else item[1], None)
 
     return errors

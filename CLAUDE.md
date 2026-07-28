@@ -25,17 +25,23 @@ structured feedback — so the language must stay small, regular, and verifiable
   subprocess that runs `expect` blocks), `resolve.py` (name-resolution
   pass → `undefined-name`/`unknown-task`), `annotate.py` (record-literal typing
   pass → sets `RecordLit.type_name`, `ambiguous-record`/`unknown-field`/
-  `missing-field`), `suggest.py` (deterministic
+  `missing-field`), `capabilities.py` (the capability/effect enforcement pass →
+  declared surface + `undeclared-capability`/`unknown-capability`; adapter-name
+  collision handling), `adapters.py` (in-memory reference adapters injected by
+  `check`), `suggest.py` (deterministic
   edit-distance "did you mean X?"), `errors.py`, `__main__.py` (CLI),
-  `__init__.py` (`compile_source`).
+  `__init__.py` (`compile_source`). `pedro_capabilities.py` (repo root) re-exports
+  the reference adapters so built examples run.
 - `tests/` — `test_diagnostics.py` (structured-diagnostic tests) and
   `test_sandbox.py` (subprocess timeout/crash isolation); both are pytest-shaped
   but also self-runnable, and `tools/regress.py` invokes them.
 - `examples/cookbook/*.pedro` — the regression corpus (incl. `tickets.pedro`,
-  which models data with a `record` + an `enum`).
+  which models data with a `record` + an `enum`; and `credentials.pedro`, which
+  uses the `database` + `crypto` capabilities).
 - `examples/math.pedro` — integer algorithms. `examples/order_total.pedro`
-  (a `record`) now compiles and is in the corpus. `examples/signup.pedro`
-  (capabilities) is language-designed but **not yet compilable**.
+  (a `record`) and `examples/signup.pedro` (database/email/crypto capabilities via
+  the adapter layer) both compile and are in the corpus (signup is Python-only —
+  the TS backend can't emit adapters yet).
 - `tools/regress.py` — compiles and RUNS the whole corpus (this is CI). Also runs
   a small fuzz smoke by default; `--fuzz`/`--diff`/`--slow` run the full sweeps.
 - `tools/backends.py` — per-backend "run + report expectations" adapter (Python via
@@ -122,7 +128,10 @@ knowing *what remains*. So:
 ## Current coverage (as of this writing)
 
 **Supported by the compiler:** scalars (`text`/`whole`/`number`/`flag`), lists,
-maps, **`record`/`enum` types**, `let`/reassign, `increase`/`decrease`,
+maps, **`record`/`enum` types**, **capabilities + the adapter layer** (`use
+capability …`; `table`; verbs `insert`/`send`/`hash`/`verify`; undeclared use is a
+compile error; `check --json` reports the declared `capabilities` surface),
+`let`/reassign, `increase`/`decrease`,
 `when`/`otherwise`, `while`, `repeat`,
 `for each` (+index), recursion, arithmetic + readable comparisons, membership,
 `followed by`, the collection operations (`count of`, `item at`, `filter`, `sum of`,
@@ -138,14 +147,16 @@ LineItem`), never by naming convention. **Targets:** Python **and TypeScript** (
 runs green on both, and `tools/differential.py` asserts the two backends agree.
 **Diagnostics:** `line:col`, stable
 `code`s + actionable `hint`s, source `snippet` with `^` caret, nearest-match
-`suggestion` ("did you mean X?") for unknown identifiers/tasks/keywords, and a
-reserved `capabilities` surface; `check --json` is compact (null fields omitted).
+`suggestion` ("did you mean X?") for unknown identifiers/tasks/keywords, and the
+program's declared `capabilities` surface; `check --json` is compact (null fields omitted).
 `check` runs the generated program in a **sandboxed subprocess** (wall-clock
 timeout + restricted env, `pedroc/_expect_runner.py`), reporting a non-terminating
 or crashing program as `status:"timeout"`/`"error"` instead of hanging.
 
 **Designed but NOT yet in the compiler** (see `WORKLOG.md` roadmap, highest first):
-capabilities/effects + adapter layer (unblocks `examples/signup.pedro`). The
+the remaining capability verbs (db `update`/`delete`, `http`, `files`, `time`,
+`random`) and the TypeScript adapter path; then `pedroc check --targets`. The
 `WORKLOG.md` roadmap section is the source of truth for what to build next. (The
-TypeScript backend and `record`/`enum` types have both **landed** —
-`pedroc/codegen_ts.py`, `pedroc/annotate.py`.)
+TypeScript backend, `record`/`enum` types, and the **capability/adapter layer**
+have all **landed** — `pedroc/codegen_ts.py`, `pedroc/annotate.py`,
+`pedroc/capabilities.py` + `pedroc/adapters.py`.)

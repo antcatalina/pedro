@@ -1,4 +1,5 @@
 # In-flight task
 
-_None._ `record`/`enum` types (roadmap #2) are complete and green on both lanes;
-see the 2026-07-28 WORKLOG entry. No task currently in flight.
+_None._ Capabilities + the adapter layer (roadmap #3) are complete and green on the
+Python lane (TS pending, documented); see the 2026-07-28 WORKLOG entry. No task
+currently in flight.

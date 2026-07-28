@@ -23,6 +23,7 @@ from .parser import Parser
 from .errors import PedroSyntaxError, PedroNameError
 from .resolve import resolve
 from .annotate import annotate
+from .capabilities import check_capabilities
 from . import nodes as N
 from .codegen_python import generate, _gen_expr
 
@@ -33,6 +34,14 @@ _CMP = {"==", "!=", "<", "<=", ">", ">="}
 DEFAULT_TIMEOUT = 10.0
 
 _RUNNER = os.path.join(os.path.dirname(os.path.abspath(__file__)), "_expect_runner.py")
+_ADAPTERS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "adapters.py")
+
+
+def _adapters_source():
+    """The in-memory reference adapters, injected into the sandbox as
+    `pedro_capabilities` so a capability program is runnable there with no setup."""
+    with open(_ADAPTERS, "r", encoding="utf-8") as f:
+        return f.read()
 
 # Environment variables the sandboxed child is allowed to inherit. Notably absent:
 # PYTHONPATH (so it can't import project code) and anything app-specific.
@@ -136,6 +145,15 @@ def check(source, filename="<pedro>", target="python", timeout=DEFAULT_TIMEOUT):
         report["summary"] = f"{len(type_errors)} type error(s); first at line {first.line}:{first.col}: {first.message}"
         return report
 
+    surface, cap_errors = check_capabilities(program)
+    report["capabilities"] = surface   # the program's declared blast radius
+    if cap_errors:
+        for e in cap_errors:
+            report["errors"].append(_diag(source, e))
+        first = cap_errors[0]
+        report["summary"] = f"{len(cap_errors)} capability error(s); first at line {first.line}:{first.col}: {first.message}"
+        return report
+
     for h in _collect_holes(program):
         report["holes"].append({"line": h.line, "message": h.message})
 
@@ -145,7 +163,8 @@ def check(source, filename="<pedro>", target="python", timeout=DEFAULT_TIMEOUT):
 
     code = generate(program, filename)
     steps = _build_steps(program)
-    run = _run_expectations(code, steps, timeout)
+    adapters = _adapters_source() if surface else None
+    run = _run_expectations(code, steps, timeout, adapters)
 
     if run["load_error"] is not None:
         report["errors"].append({"line": 0, "code": "codegen-error", "message": run["load_error"], "hint": None})
@@ -161,7 +180,7 @@ def check(source, filename="<pedro>", target="python", timeout=DEFAULT_TIMEOUT):
         report["errors"].append({"line": 0, "code": "given-error", "message": msg, "hint": None})
     report["expectations"] = run["expectations"]
 
-    n_total = sum(1 for s in steps if s["kind"] != "given")
+    n_total = sum(1 for s in steps if s["kind"] not in ("given", "exec"))
     n_pass = sum(1 for x in run["expectations"] if x["passed"])
 
     if run["timed_out"]:
@@ -194,6 +213,8 @@ def _build_steps(program):
             kind = item[0]
             if kind == "given":
                 steps.append({"kind": "given", "name": item[1], "expr": _gen_expr(item[2])})
+            elif kind == "given-empty":
+                steps.append({"kind": "exec", "expr": f"{item[1]}.clear()"})
             elif kind == "assert":
                 a = item[1]
                 expr = _gen_expr(a)
@@ -216,13 +237,15 @@ def _restricted_env():
     return env
 
 
-def _run_expectations(code, steps, timeout):
+def _run_expectations(code, steps, timeout, adapters=None):
     """Run the generated program's expect block in a sandboxed subprocess and
     collect per-step results. Never hangs or raises: a non-terminating program is
-    reported via `timed_out`, a crashing one via `crash`."""
+    reported via `timed_out`, a crashing one via `crash`. `adapters` (if given) is
+    the reference in-memory capability module source, injected as
+    `pedro_capabilities` so a capability program is runnable in the sandbox."""
     result = {"expectations": [], "given_errors": [], "load_error": None,
               "crash": None, "timed_out": False, "hung": None}
-    payload = json.dumps({"code": code, "steps": steps})
+    payload = json.dumps({"code": code, "steps": steps, "adapters": adapters})
     try:
         proc = subprocess.run(
             [sys.executable, _RUNNER],

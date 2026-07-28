@@ -6,11 +6,12 @@ No LLM involved; the same input always yields the same output.
 from .lexer import tokenize
 from .parser import Parser
 from .annotate import annotate
+from .capabilities import check_capabilities
 from .codegen_python import generate as generate_python
 from .codegen_ts import generate as generate_ts
-from .errors import PedroSyntaxError, PedroTypeError
+from .errors import PedroSyntaxError, PedroTypeError, PedroCapabilityError
 
-__all__ = ["compile_source", "PedroSyntaxError", "PedroTypeError"]
+__all__ = ["compile_source", "PedroSyntaxError", "PedroTypeError", "PedroCapabilityError"]
 
 __version__ = "0.1"
 
@@ -25,5 +26,8 @@ def compile_source(source, filename="<pedro>", target="python"):
     type_errors = annotate(program)   # resolves record-literal types; may error
     if type_errors:
         raise type_errors[0]
+    _surface, cap_errors = check_capabilities(program)  # undeclared power → compile error
+    if cap_errors:
+        raise cap_errors[0]
     program.target = target
     return _TARGETS[target](program, filename)

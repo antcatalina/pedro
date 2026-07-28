@@ -79,15 +79,19 @@ class Parser:
                 items.append(self._parse_record())
             elif self._is_name("enum"):
                 items.append(self._parse_enum())
+            elif self._is_name("use"):
+                items.append(self._parse_use())
+            elif self._is_name("table"):
+                items.append(self._parse_table())
             elif self._is_name("expect"):
                 items.append(self._parse_expect())
             else:
                 t = self._cur()
                 raise PedroSyntaxError(
-                    t[2], f"expected 'task', 'record', 'enum', or 'expect', found {t[1]!r}",
+                    t[2], f"expected 'task', 'record', 'enum', 'use', 'table', or 'expect', found {t[1]!r}",
                     code="unexpected-token", col=t[3],
-                    hint="top-level items are `record`/`enum` declarations, `task <name>(...) returns <type>:`, and `expect:`",
-                    suggestion=nearest(t[1], ("task", "record", "enum", "expect")),
+                    hint="top-level items are `use capability <name>`, `table <name>: <Record>`, `record`/`enum` declarations, `task <name>(...) returns <type>:`, and `expect:`",
+                    suggestion=nearest(t[1], ("task", "record", "enum", "use", "table", "expect")),
                 )
             self._skip_newlines()
         return N.Program(target=target, items=items)
@@ -182,6 +186,23 @@ class Parser:
         self._expect("DEDENT")
         return N.Enum(name=name, variants=variants)
 
+    def _parse_use(self):
+        """`use capability <name>` — a capability declaration."""
+        self._expect("NAME", "use")
+        self._expect("NAME", "capability")
+        cap = self._expect("NAME")
+        self._expect("NEWLINE")
+        return N.Use(capability=cap[1], line=cap[2], col=cap[3])
+
+    def _parse_table(self):
+        """`table <name>: <RecordType>` — a database table binding."""
+        self._expect("NAME", "table")
+        name = self._expect("NAME")
+        self._expect("OP", ":")
+        row = self._expect("NAME")
+        self._expect("NEWLINE")
+        return N.Table(name=name[1], row_type=row[1], line=name[2], col=name[3])
+
     def _parse_param(self):
         pname = self._expect("NAME")[1]
         self._expect("OP", ":")
@@ -202,8 +223,15 @@ class Parser:
             if self._is_name("given"):
                 self._advance()
                 name = self._expect("NAME")[1]
-                self._expect("OP", "=")
-                items.append(("given", name, self._parse_expr()))
+                if self._is("OP", "="):
+                    self._advance()
+                    items.append(("given", name, self._parse_expr()))
+                else:
+                    # `given <table> is empty` — reset a table to empty before the
+                    # expectations run (test isolation for effectful programs).
+                    self._expect("NAME", "is")
+                    self._expect("NAME", "empty")
+                    items.append(("given-empty", name))
             else:
                 expr = self._parse_expr()
                 if self._is_name("fails"):
@@ -299,6 +327,20 @@ class Parser:
                 target = self._parse_add()
                 self._expect("NEWLINE")
                 return N.Swap(i=i, j=j, target=target)
+            if kw == "send":
+                line, col = self._line(), self._col()
+                self._advance()
+                self._expect("NAME", "email")
+                self._expect("NAME", "to")
+                to = self._parse_expr()
+                self._expect("NAME", "with")
+                self._expect("NAME", "subject")
+                subject = self._parse_expr()
+                self._expect("NAME", "body")
+                body = self._parse_expr()
+                self._expect("NEWLINE")
+                return N.ExprStmt(expr=N.CapCall(
+                    cap="email", verb="send", args=[to, subject, body], line=line, col=col))
             if kw == "fail":
                 self._advance()
                 self._expect("NAME", "with")
@@ -732,6 +774,23 @@ class Parser:
                 self._advance()
                 cond = self._parse_expr()
             return N.Comp(kind="sum", elem=elem, var=var, coll=coll, cond=cond)
+        if kw == "insert" and self._peek()[1] == "into":
+            line, col = self._line(), self._col()
+            self._advance()  # insert
+            self._advance()  # into
+            table = self._parse_add()          # the table handle (a name)
+            record = self._parse_expr()        # the { ... } record literal to store
+            return N.CapCall(cap="database", verb="insert", args=[table, record], line=line, col=col)
+        if kw == "hash":
+            line, col = self._line(), self._col()
+            self._advance()
+            return N.CapCall(cap="crypto", verb="hash", args=[self._parse_unary()], line=line, col=col)
+        if kw == "verify":
+            line, col = self._line(), self._col()
+            self._advance()
+            text = self._parse_add()
+            self._expect("NAME", "against")
+            return N.CapCall(cap="crypto", verb="verify", args=[text, self._parse_add()], line=line, col=col)
         if kw == "find" and self._peek()[1] == "one":
             self._advance()
             self._advance()

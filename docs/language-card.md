@@ -25,12 +25,13 @@ check it:
      right, just apply it. Common codes: `unexpected-token`, `expected-expression`,
      `bad-indentation`, `unterminated-string`, `undefined-name`, `unknown-task`,
      `empty-match`, `case-after-otherwise`, `ambiguous-record`, `unknown-field`,
-     `missing-field`, `empty-record`, `empty-enum`.
+     `missing-field`, `empty-record`, `empty-enum`, `undeclared-capability`,
+     `unknown-capability`, `unknown-record`.
    - `holes[]` → resolve each `todo`, or ask the user for the missing detail.
    - `expectations[].passed == false` → your logic is wrong; `detail` gives
      `got X, expected <op> Y`. Fix and re-check.
-   - `capabilities[]` → the program's declared capability surface (reserved;
-     empty today).
+   - `capabilities[]` → the program's declared capability surface (the effects it
+     may reach), e.g. `["database","email","crypto"]`.
    - `status` → present only on an abnormal run: `"timeout"` (your program didn't
      terminate — likely an infinite loop; the summary names the stuck expectation)
      or `"error"` (it crashed). Your program is run in a sandboxed subprocess with
@@ -47,11 +48,15 @@ check it:
 ```pedro
 target: python                       # required first line (or `target: typescript`)
 
+use capability <name>                # optional: unlock an effect (see "Capabilities")
+
 record <Name>:                       # optional: data types (see "Records & enums")
     <field>: <type> [= <default>]
 
 enum <Name>:
     <variant>
+
+table <name>: <Record>               # optional: a database table (needs `use capability database`)
 
 task <name>(<p>: <type>, ...) returns <type>:
     <statements>
@@ -150,14 +155,70 @@ whose fields it matches; if that's ambiguous or a field is wrong/missing you get
 (`items: list of LineItem`), never by naming convention — Pedro does not turn a
 collection named `users` into `User` rows. State the element type.
 
+## Capabilities & effects (supported)
+
+Pedro is **pure by default**; side effects must be unlocked with `use capability
+<name>` at the top level. Using a verb whose capability isn't declared is a
+COMPILE ERROR (`undeclared-capability`) — declare it or don't use it. The declared
+set is reported by `check --json` as `capabilities[]` (the program's blast radius).
+
+```pedro
+target: python
+
+use capability database
+use capability email
+use capability crypto
+
+record User:
+    email: text
+    password: text
+    id: text = ""            # the database assigns this on insert
+
+table users: User            # a table binds its row type EXPLICITLY
+
+task sign_up(email: text, password: text) returns text:
+    when "@" not in email:
+        fail with "invalid email"
+    let existing = find one user in users where user.email is email
+    when existing is present:
+        fail with "email already registered"
+    let hashed = hash password
+    let new_id = insert into users { email: email, password: hashed }
+    send email to email with subject "Welcome!" body "Thanks for signing up."
+    return new_id
+
+expect:
+    given users is empty         # reset a table before the expectations run
+    sign_up("ada@x.com", "s3cret") is present
+    sign_up("nope", "s3cret") fails with "invalid email"
+```
+
+Declarable capabilities: `database` · `http` · `email` · `files` · `time` ·
+`crypto` · `random`. **Verbs live today:**
+
+- `table <name>: <Record>` — declare a database table (needs `use capability database`).
+  Read it with the ordinary collection ops (`find one … in <table>`, `count of
+  <table>`, `for each … in <table>`) — the handle is just an iterable.
+- `insert into <table> { <fields> }` — store a row, returns its new id (database).
+- `send email to <addr> with subject <s> body <b>` — send an email (email).
+- `hash <text>` — hash a value (crypto). `verify <text> against <hash>` — returns a `flag`.
+- `given <table> is empty` — in an `expect:` block, reset a table to empty first.
+
+Capability calls compile through a swappable `pedro_capabilities` adapter module,
+so `check` runs them against in-memory mocks (no real I/O). Verbs are reserved
+words in these positions — don't name a variable `hash`, `insert`, `send`, or `verify`.
+
 ## NOT yet supported — do not use until the compiler catches up
 
-Capabilities/effects (`use capability …` and its verbs), modules
-(`use "file.pedro"`), the `raw <lang>: … end raw` escape hatch, loop
-`stop`/`skip`, keyed/descending `sort`, and the predicates `is a valid email` /
-`is a valid url` / `is even` / `is odd`. If the task needs one of these: write
-the task signature and an `expect:` block, and put a `todo "<what's needed>"`
-in the body. Ship the hole, don't fake it.
+These capability verbs are declared-but-not-yet-emitted: database `update`/`delete`,
+`http get`/`http post`, files `read file`/`write … to file`, `now`/`today` (time),
+`random whole from … to …` (random) — and the TypeScript backend can't emit the
+adapter layer yet, so a capability program is Python-only. Also: modules
+(`use "file.pedro"`), the `raw <lang>: … end raw` escape hatch, loop `stop`/`skip`,
+keyed/descending `sort`, and the predicates `is a valid email` / `is a valid url` /
+`is even` / `is odd`. If the task needs one of these: write the task signature and
+an `expect:` block, and put a `todo "<what's needed>"` in the body. Ship the hole,
+don't fake it.
 
 ## Canonical example
 

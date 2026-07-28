@@ -1,24 +1,25 @@
-# Sign a new user up: validate the email, reject duplicates,
-# hash the password, store the user, and send a welcome email.
-target: python 3.11
+# Sign a new user up: validate the email, reject duplicates, hash the password,
+# store the user, and send a welcome email. This is the capability showcase —
+# database + email + crypto, each routed through the swappable adapter layer, and
+# every effect declared up front so the program's blast radius is auditable.
+target: python
 
 use capability database
 use capability email
 use capability crypto
 
-# pedro-note: this file is a DESIGN example — capabilities (`use capability …`)
-# aren't in the compiler yet, so it does not compile. It shows the resolved rule
-# for how a table binds to a record: EXPLICITLY, not by naming convention. A
-# future `database` capability will require the row type to be declared (e.g.
-# `table users: User`), so `users` holds `User` rows because it is stated — Pedro
-# never singularizes `users` into `User`. See docs/language-card.md ("Records").
 record User:
-    id: text
     email: text
     password: text
+    id: text = ""            # assigned by the database on insert
+
+# pedro-note: a table binds its row type EXPLICITLY (`table users: User`) — Pedro
+# never singularizes `users` into `User`. `users` is a table handle: iterable, so
+# `find one user in users …` reuses the ordinary comprehension path.
+table users: User
 
 task sign_up(email: text, password: text) returns text:
-    when email is not a valid email:
+    when "@" not in email:
         fail with "invalid email"
 
     let existing = find one user in users where user.email is email
@@ -27,6 +28,8 @@ task sign_up(email: text, password: text) returns text:
 
     let hashed = hash password
     let new_id = insert into users { email: email, password: hashed }
+    # `email` (the adapter) collides with the `email` parameter, so pedroc imports
+    # it as `mailer` — the import is renamed, never the user's identifier.
     send email to email with subject "Welcome!" body "Thanks for signing up."
     return new_id
 
@@ -34,3 +37,4 @@ expect:
     given users is empty
     sign_up("ada@example.com", "s3cret") is present
     sign_up("not-an-email", "s3cret") fails with "invalid email"
+    sign_up("ada@example.com", "again") fails with "email already registered"

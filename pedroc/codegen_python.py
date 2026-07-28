@@ -4,6 +4,7 @@ Binary expressions are fully parenthesized so emitted precedence always matches
 the parsed AST — deterministic and never wrong, at the cost of a few parens.
 """
 from . import nodes as N
+from .capabilities import declared_capabilities, adapter_names
 
 TYPE_MAP = {"text": "str", "whole": "int", "number": "float", "flag": "bool", "nothing": "None"}
 BINOP_MAP = {"mod": "%", "div": "//", "followed_by": "+"}
@@ -80,6 +81,7 @@ _match_counter = [0]
 # single-threaded), mirroring the _match_counter pattern.
 _records = {}
 _typenames = set()   # declared record + enum names (rendered by name, not `object`)
+_adapters = {}       # {capability: emitted adapter alias} for this file
 
 
 def _fresh_subject():
@@ -87,13 +89,27 @@ def _fresh_subject():
     return f"_subject{_match_counter[0]}"
 
 
+def _cap_import(caps):
+    """`from pedro_capabilities import database, email as mailer, crypto` — one
+    swappable per-project module. Aliases dodge collisions with user identifiers
+    (contract #7: rename the IMPORT, never the user's names)."""
+    specs = []
+    for cap in caps:
+        alias = _adapters[cap]
+        specs.append(cap if alias == cap else f"{cap} as {alias}")
+    return f"from pedro_capabilities import {', '.join(specs)}"
+
+
 def generate(program, filename="<pedro>"):
-    global _records, _typenames
+    global _records, _typenames, _adapters
     _match_counter[0] = 0  # reset per call → deterministic temp names
     records = [it for it in program.items if isinstance(it, N.Record)]
     enums = [it for it in program.items if isinstance(it, N.Enum)]
+    tables = [it for it in program.items if isinstance(it, N.Table)]
+    caps = declared_capabilities(program)
     _records = {r.name: r for r in records}
     _typenames = {r.name for r in records} | {en.name for en in enums}
+    _adapters = adapter_names(program)
 
     lines = [
         f"# Generated from {filename} by pedroc v0.1 (target: {program.target}). Do not edit by hand.",
@@ -107,6 +123,8 @@ def generate(program, filename="<pedro>"):
         imports.append("from dataclasses import dataclass")
     if enums:
         imports.append("from enum import Enum")
+    if caps:
+        imports.append(_cap_import(caps))
     lines += future
     if imports:
         lines += imports + [""]
@@ -116,6 +134,12 @@ def generate(program, filename="<pedro>"):
         lines.append("")
     for rec in records:
         lines.extend(_gen_record(rec))
+        lines.append("")
+
+    # Table bindings come after the record classes they reference.
+    for tbl in tables:
+        lines.append(f'{tbl.name} = {_adapters["database"]}.table("{tbl.name}", {tbl.row_type})')
+    if tables:
         lines.append("")
 
     if _uses_pedro_error(program):
@@ -146,6 +170,8 @@ def _gen_expect_item(item):
     kind = item[0]
     if kind == "given":
         return [f"    {item[1]} = {_gen_expr(item[2])}"]
+    if kind == "given-empty":
+        return [f"    {item[1]}.clear()"]
     if kind == "assert":
         return [f"    assert {_gen_expr(item[1])}"]
     if kind == "fails":
@@ -284,6 +310,24 @@ def _gen_record_lit(e):
     return f"{e.type_name}({', '.join(args)})"
 
 
+def _gen_capcall(e):
+    """A capability verb -> a call on its adapter (from `pedro_capabilities`).
+    Table verbs (`insert`) go through the table handle; the rest through the
+    capability's adapter alias."""
+    if e.verb == "insert":
+        table, record = e.args
+        return f"{_gen_expr(table)}.insert({_gen_expr(record)})"
+    if e.verb == "hash":
+        return f"{_adapters['crypto']}.hash({_gen_expr(e.args[0])})"
+    if e.verb == "verify":
+        return f"{_adapters['crypto']}.verify({_gen_expr(e.args[0])}, {_gen_expr(e.args[1])})"
+    if e.verb == "send":
+        to, subject, body = e.args
+        return (f"{_adapters['email']}.send(to={_gen_expr(to)}, "
+                f"subject={_gen_expr(subject)}, body={_gen_expr(body)})")
+    raise TypeError(f"unknown capability verb: {e.verb!r}")
+
+
 def _gen_str(value):
     if "{" in value or "}" in value:
         body = value.replace("\\{", "{{").replace("\\}", "}}")
@@ -317,6 +361,8 @@ def _gen_expr(e):
         return "{" + ", ".join(f"{_gen_expr(k)}: {_gen_expr(v)}" for k, v in e.pairs) + "}"
     if isinstance(e, N.RecordLit):
         return _gen_record_lit(e)
+    if isinstance(e, N.CapCall):
+        return _gen_capcall(e)
     if isinstance(e, N.Convert):
         fn = CONVERT_MAP.get(e.to)
         if fn is None:

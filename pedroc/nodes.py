@@ -40,8 +40,30 @@ class Enum:
 
 
 @dataclass
+class Use:
+    """`use capability <name>` — declares one effectful capability the program is
+    allowed to reach (database/http/email/files/time/crypto/random). The set of
+    these is the program's auditable blast radius; using a verb whose capability
+    isn't declared is a compile error."""
+    capability: str
+    line: Optional[int] = None
+    col: Optional[int] = None
+
+
+@dataclass
+class Table:
+    """`table <name>: <RecordType>` — a database table binding. Requires the
+    `database` capability. Compiles to `<name> = database.table("<name>", Row)`;
+    the handle is iterable, so `find one … in <name>` reuses the comprehension path."""
+    name: str
+    row_type: str
+    line: Optional[int] = None
+    col: Optional[int] = None
+
+
+@dataclass
 class Expect:
-    items: list          # list of ("given", name, expr) | ("assert", expr) | ("fails", expr, msg)
+    items: list          # ("given", name, expr) | ("given-empty", table) | ("assert", expr) | ("fails", expr, msg)
 
 
 # --- statements ---
@@ -221,6 +243,19 @@ class RecordLit:
     line: Optional[int] = None
     col: Optional[int] = None
     type_name: Optional[str] = None   # filled in by annotate.py
+
+
+@dataclass
+class CapCall:
+    """A capability verb call, e.g. `hash password`, `insert into users { … }`,
+    `send email to a with subject s body b`. Always an EXPRESSION (a bare verb
+    statement is wrapped in `ExprStmt`); it compiles to a call on the capability's
+    adapter. `args` order is verb-specific (see codegen)."""
+    cap: str             # owning capability, e.g. "crypto"
+    verb: str            # e.g. "hash", "insert", "send", "verify"
+    args: list           # list of expressions
+    line: Optional[int] = None
+    col: Optional[int] = None
 
 
 @dataclass

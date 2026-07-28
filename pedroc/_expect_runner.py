@@ -32,6 +32,19 @@ def main():
     code = payload["code"]
     steps = payload["steps"]
 
+    # A capability program imports `pedro_capabilities`; inject the reference
+    # in-memory adapters (passed in by the parent) under that name FIRST, so the
+    # generated code's `from pedro_capabilities import ...` resolves in the sandbox.
+    adapters_src = payload.get("adapters")
+    if adapters_src:
+        cap_mod = types.ModuleType("pedro_capabilities")
+        sys.modules["pedro_capabilities"] = cap_mod
+        try:
+            exec(compile(adapters_src, "<pedro-capabilities>", "exec"), cap_mod.__dict__)
+        except Exception as e:
+            _emit({"t": "load-error", "message": f"capability adapters: {e}"})
+            return 0
+
     # Exec into a REAL module object registered in sys.modules. `@dataclass`
     # resolves its enclosing module via `sys.modules[cls.__module__]`, so a bare
     # dict namespace makes record generation crash; a registered module fixes it.
@@ -54,6 +67,14 @@ def main():
         if kind == "given":
             try:
                 ns[step["name"]] = eval(step["expr"], ns)
+                _emit({"t": "given-ok"})
+            except Exception as e:
+                _emit({"t": "given-error", "message": str(e)})
+            continue
+
+        if kind == "exec":  # a setup side-effect, e.g. `users.clear()`
+            try:
+                eval(step["expr"], ns)
                 _emit({"t": "given-ok"})
             except Exception as e:
                 _emit({"t": "given-error", "message": str(e)})

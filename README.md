@@ -35,7 +35,7 @@ If you're already driving most of your codebase through Claude Code, Cursor, or 
 - **Typed holes instead of hallucination.** When Claude doesn't know a value or a rule, it writes `todo "<what's missing and why>"` instead of guessing. A hole is visible and blocks `ok: true`; a guess silently ships a bug. This matters far more once an agent is making hundreds of these calls unattended.
 - **Determinism is a safety property, not just tidiness.** Same source, same compiler version → byte-identical output, every time. When multiple agent runs (possibly days apart, possibly different sessions) touch the same `.pedro` file, you get the same code back — no drift, no "which run generated this."
 - **Sandboxed by default.** `check` runs generated code in an isolated subprocess with a wall-clock timeout, so an agent-authored infinite loop is reported as `status: "timeout"` instead of hanging your CI or your laptop.
-- **A capability surface you can read before you run anything (🧭 landing next).** Every effectful action — database, network, filesystem, email — has to be declared with `use capability`. Once compiled, `pedroc check --json` will report the program's entire declared capability surface as a field: the full blast radius of what an agent-authored program can *do*, visible before a single line executes. That's the kind of manifest an agent governance layer (or a human reviewing 50 agent-authored programs) actually wants.
+- **A capability surface you can read before you run anything.** Every effectful action — database, network, filesystem, email — has to be declared with `use capability`, and using an undeclared one is a compile error. `pedroc check --json` reports the program's entire declared capability surface as a `capabilities` field: the full blast radius of what an agent-authored program can *do*, visible before a single line executes. That's the kind of manifest an agent governance layer (or a human reviewing 50 agent-authored programs) actually wants.
 - **The language card fits in one prompt.** [`docs/language-card.md`](docs/language-card.md) is the entire in-context spec — no fine-tuning, no RAG over scattered docs. Every model call gets the complete, current language.
 - **We dogfood this exact loop.** Pedro's own compiler is developed largely by autonomous Claude Code agents running on a schedule against this same `pedroc check` loop (see [`CLAUDE.md`](CLAUDE.md)) — if the authoring loop weren't reliable, the compiler wouldn't be either.
 
@@ -234,7 +234,7 @@ Every program starts with directives (before the first declaration):
 - `target: <language> [version]` — **required; implemented.** e.g. `target: python 3.11`, `target: python`, `target: typescript`. **Both `python` and `typescript` are real targets today** (`pedroc build file.pedro --target typescript` → runnable `.ts`); the version suffix parses but has no effect on output yet. 🧭 other languages.
 - `module: <name>` 🧭 — optional module name. Not yet parsed.
 - `use "<file>.pedro"` / `use <name> from "<file>.pedro"` 🧭 — imports. Not yet parsed.
-- `use capability …` 🧭 — capability declarations (see below). Not yet parsed.
+- `use capability …` — **implemented.** Capability declarations (see [below](#capabilities--talking-to-the-outside-world--implemented)); a top-level declaration of one effectful power the program is allowed to reach.
 
 ### Comments
 
@@ -416,7 +416,7 @@ on failure as err:
     fail with "could not complete: {err}"
 ```
 
-(`try`/`on failure` catches a Pedro-raised `fail with`, as in the [worked example](#a-worked-example--real-today-verified-by-pedroc-check) above. 🧭 Catching errors from capability calls like `http get` will work the same way once capabilities land.)
+(`try`/`on failure` catches a Pedro-raised `fail with`, as in the [worked example](#a-worked-example--real-today-verified-by-pedroc-check) above. An adapter that raises a Pedro failure is caught the same way.)
 
 ### Collection operations — implemented
 
@@ -435,9 +435,9 @@ numbers from 1 to 10                                   # inclusive range
 
 A fuller set of list, map, text, and range operations — used throughout the cookbook — is documented in [`docs/cookbook.md`](docs/cookbook.md). 🧭 Keyed/descending sort (`sort users by created_at descending`) is designed but not yet implemented — `sort` today takes a single collection and sorts it in ascending natural order.
 
-### Capabilities — talking to the outside world 🧭 — designed, not yet parsed
+### Capabilities — talking to the outside world — **implemented**
 
-Pedro programs are **pure by default.** Anything with side effects must be unlocked with a capability. This keeps dependencies explicit and the generated code predictable and testable. **None of the syntax below is recognized by `pedroc` yet** — it's the core differentiator we're building toward ("auditable by construction"), tracked at the top of [WORKLOG.md](WORKLOG.md)'s roadmap.
+Pedro programs are **pure by default.** Anything with side effects must be unlocked with a capability. This is the core differentiator — **auditable by construction**: the set of declared capabilities is the program's entire blast radius, and using a verb whose capability isn't declared is a **compile error**, never a silent import.
 
 ```pedro
 use capability database
@@ -449,19 +449,50 @@ use capability crypto
 use capability random
 ```
 
-Capabilities are intended to provide verbs:
+All seven **declarations** parse, are enforced, and are reported by `pedroc check --json` as a `capabilities` field. Capabilities provide verbs:
 
-| Capability | Verbs |
-|------------|-------|
-| `database` | `find one … in <table>`, `insert into <table> { … }` (returns id), `update <table> set { … } where …`, `delete from <table> where …` |
-| `http`     | `http get "<url>"`, `http post "<url>" with <body>` |
-| `email`    | `send email to <address> with subject "<s>" body "<b>"` |
-| `files`    | `read file "<path>"`, `write <text> to file "<path>"` |
-| `time`     | `now`, `today` |
-| `crypto`   | `hash <text>`, `verify <text> against <hash>` |
-| `random`   | `random whole from <a> to <b>` |
+| Capability | Verbs | Status |
+|------------|-------|--------|
+| `database` | `insert into <table> { … }` (returns id) | **implemented** |
+| `database` | `update <table> set { … } where …`, `delete from <table> where …` | 🧭 pending |
+| `email`    | `send email to <address> with subject "<s>" body "<b>"` | **implemented** |
+| `crypto`   | `hash <text>`, `verify <text> against <hash>` | **implemented** |
+| `http`     | `http get "<url>"`, `http post "<url>" with <body>` | 🧭 pending |
+| `files`    | `read file "<path>"`, `write <text> to file "<path>"` | 🧭 pending |
+| `time`     | `now`, `today` | 🧭 pending |
+| `random`   | `random whole from <a> to <b>` | 🧭 pending |
 
-The intent: capability calls compile through a small, pluggable **adapter layer** (one per project) so generated code stays clean and unit-testable, and the outside world is easy to mock in tests — and a program's *entire* declared capability surface becomes readable straight from `pedroc check --json`, before anyone runs it.
+Reading a table (`find one user in users where …`, `count of users`, `for each user in users`) needs no new verb — a `table` handle is an ordinary iterable, so the existing collection operations work on it directly.
+
+**The adapter layer.** Capability calls compile through a small, swappable module — `pedro_capabilities` — with one adapter object per capability (`database`, `crypto`, `email`, …). Generated code stays clean (`crypto.hash(password)`, `users.insert(...)`, `mailer.send(...)`) and the outside world is trivial to mock: a project ships its own `pedro_capabilities.py` wired to a real database / SMTP server, and `pedroc`'s in-memory reference adapters ([`pedroc/adapters.py`](pedroc/adapters.py)) make `pedroc check` run an effectful program with no real I/O. `examples/signup.pedro` (validate → dedupe → hash → store → email) and `examples/cookbook/credentials.pedro` (register → login) both compile and pass `pedroc check` against those mocks.
+
+**Tables.** A database table binds its row type explicitly — `table users: User` — and is referenced by name:
+
+```pedro
+use capability database
+use capability email
+use capability crypto
+
+record User:
+    email: text
+    password: text
+    id: text = ""            # assigned by the database on insert
+
+table users: User
+
+task sign_up(email: text, password: text) returns text:
+    when "@" not in email:
+        fail with "invalid email"
+    let existing = find one user in users where user.email is email
+    when existing is present:
+        fail with "email already registered"
+    let hashed = hash password
+    let new_id = insert into users { email: email, password: hashed }
+    send email to email with subject "Welcome!" body "Thanks for signing up."
+    return new_id
+```
+
+Here `email` is both a parameter and a capability, so `pedroc` imports the email adapter under a **non-colliding alias** (`from pedro_capabilities import ... , email as mailer`) — the *import* is renamed, never your identifier (contract rule #7). `pedroc check examples/signup.pedro --json` reports `"capabilities":["database","email","crypto"]`.
 
 ### Modules 🧭 — designed, not yet parsed
 
@@ -522,10 +553,10 @@ This is the part that makes Pedro reliable. When a `.pedro` file is compiled, th
 1. **The spec is normative.** `docs/SPEC.md` 🧭 (planned) and [`docs/language-card.md`](docs/language-card.md) define the language. Compile to match it — don't guess.
 2. **Emit idiomatic target code.** Follow the target language's conventions: naming (`snake_case` for Python, `camelCase` for TS, etc.), standard library, and formatting. Convert Pedro identifiers to the target convention while preserving meaning.
 3. **Translate construct-by-construct** using the canonical mappings in the spec. Don't restructure or "improve" the logic.
-4. **No undeclared powers.** 🧭 Once capabilities land: only use capabilities the program declares with `use capability`. If code needs one that isn't declared, stop and emit `# PEDRO-ERROR: capability <x> not declared` — never invent APIs or import libraries silently.
+4. **No undeclared powers.** — **implemented.** Only capabilities the program declares with `use capability` may be used. A verb whose capability isn't declared is a **compile error** (`undeclared-capability`) — `pedroc` never invents APIs or imports libraries silently.
 5. **Resolve ambiguity conservatively.** If a line has one obviously-simplest correct reading, take it and add a `# pedro-note: …` comment. If it's genuinely unclear, emit `# PEDRO-AMBIGUITY: …` and ask the author rather than guessing.
 6. **Satisfy every `expect` block.** Generated code must pass all stated expectations; today they're emitted as runnable assertions with a pass/fail summary line.
-7. **Avoid name collisions.** 🧭 Once capabilities land: if a capability adapter or import would collide with a user identifier, rename the import (e.g. import the email capability as `mailer`) — never the user's names.
+7. **Avoid name collisions.** — **implemented.** If a capability adapter import would collide with a user identifier, `pedroc` renames the *import* (e.g. the email capability imports as `mailer`) — never the user's names.
 8. **Stamp the output.** Every generated file begins with:
    `# Generated from <file>.pedro by pedroc v0.1 (target: <target>). Do not edit by hand.`
 9. **Be deterministic.** The same source + same compiler version produces byte-identical output. Don't add logging, caching, comments, or features that weren't written.
@@ -550,7 +581,7 @@ PYTHONPATH=. python -m pedroc check examples/cookbook/numbers.pedro --json
 
 `check` is the oracle for the authoring loop: emit Pedro → `check` → read the JSON (`errors`, `holes`, and failing `expectations` with `got X, expected Y`) → fix. Diagnostics are built to be *read by a model*: each error carries a stable `code`, `line` **and `col`**, an actionable `hint`, a source `snippet` with a `^` caret, and — for a misspelled identifier, task, or keyword — a nearest-match `suggestion` ("did you mean X?"). The JSON is compact (null fields omitted). The generated program is run in a **sandboxed subprocess** with a wall-clock timeout and a restricted environment, so a non-terminating or hostile program is reported as a structured `status:"timeout"`/`"error"` instead of hanging or compromising the compiler. The **authoring layer** — turning a plain-English request into Pedro and driving that loop — is the Claude Code skill in `skills/write-pedro/`; the compact spec it reads is [docs/language-card.md](docs/language-card.md).
 
-**Coverage today:** the whole cookbook (scalars, lists, maps, control flow — including `match`/`case` and `try`/`on failure as err` — recursion, and the collection operations), targeting **Python and TypeScript** — every corpus program runs green on both, and the differential tester asserts the two backends agree expectation-for-expectation. Every 🧭 in this README is not yet in the compiler — [WORKLOG.md](WORKLOG.md) has the live, prioritized list of what's next.
+**Coverage today:** the whole cookbook (scalars, lists, maps, control flow — including `match`/`case` and `try`/`on failure as err` — recursion, and the collection operations), targeting **Python and TypeScript** — every corpus program runs green on both, and the differential tester asserts the two backends agree expectation-for-expectation. **Capabilities + the adapter layer** are live on the Python backend (database/email/crypto verbs, enforced, surface-reported). Every 🧭 in this README is not yet in the compiler — [WORKLOG.md](WORKLOG.md) has the live, prioritized list of what's next.
 
 ---
 
@@ -561,7 +592,7 @@ pedro/
 ├── README.md              # overview + language guide
 ├── CLAUDE.md               # standing guidance for Claude / automated agents
 ├── WORKLOG.md              # dated change log + next steps
-├── pedroc/                 # the real compiler: lexer, parser, codegen_python + codegen_ts, check, CLI
+├── pedroc/                 # the real compiler: lexer, parser, codegen_python + codegen_ts, capabilities, adapters, check, CLI
 ├── docs/
 │   ├── design-for-llms.md  # why Pedro is shaped this way (the strategy)
 │   ├── language-card.md    # compact in-context spec for the authoring LLM
@@ -571,7 +602,7 @@ pedro/
 │   ├── math.pedro          # integer algorithms
 │   ├── cookbook/            # the cookbook algorithms as .pedro (regression corpus; incl. tickets.pedro — record + enum)
 │   ├── order_total.pedro   # uses a record       (compiles + runs on both backends; in the corpus)
-│   └── signup.pedro        # uses capabilities   (language-designed; not yet compiled)
+│   └── signup.pedro        # uses capabilities   (compiles + passes check against mock adapters)
 ├── skills/write-pedro/     # the Claude Code authoring skill (NL -> Pedro)
 └── tools/
     ├── regress.py           # compiles + checks the whole corpus (CI)
@@ -594,14 +625,14 @@ Repo-specific conventions and guardrails for anyone — or any Claude agent — 
 
 Live status and next steps live in [WORKLOG.md](WORKLOG.md). In brief:
 
-- **Done** — the language design; a real deterministic compiler (`pedroc`) for the scalar/list/map/`record`/`enum`/control-flow subset → **Python and TypeScript**; the `pedroc check` loop, typed holes, and structured diagnostics, sandboxed in a subprocess; the [cookbook](docs/cookbook.md) as a passing regression suite (`tools/regress.py`) on both backends; a differential tester + seedable grammar fuzzer running live over both backends (`tools/differential.py`, `tools/fuzz.py`).
-- **Next (highest priority first)** — capabilities + the adapter layer (unlocks "auditable by construction"); promoting the differential check into a `pedroc check --targets` guarantee; then `docs/SPEC.md`.
+- **Done** — the language design; a real deterministic compiler (`pedroc`) for the scalar/list/map/`record`/`enum`/control-flow subset → **Python and TypeScript**; **capabilities + the swappable adapter layer** (Python; database/email/crypto verbs, undeclared-use is a compile error, the declared surface reported by `check --json`); the `pedroc check` loop, typed holes, and structured diagnostics, sandboxed in a subprocess; the [cookbook](docs/cookbook.md) as a passing regression suite (`tools/regress.py`) on both backends; a differential tester + seedable grammar fuzzer running live over both backends (`tools/differential.py`, `tools/fuzz.py`).
+- **Next (highest priority first)** — the remaining capability verbs (db `update`/`delete`, `http`/`files`/`time`/`random`) + the TypeScript adapter path; promoting the differential check into a `pedroc check --targets` guarantee; then `docs/SPEC.md`.
 
 ### Committed: bets that make Pedro distinctly agent-native 🧭
 
 Approved 2026-07-28, queued on AntMac, not built yet — each depends on a "Next" item above landing first:
 
-- **Capability manifest → agent permission bridge** (`capability-permission-bridge`, depends on capabilities). `pedroc permissions <file>.pedro` will derive an agent-harness permission manifest (starting with a Claude Code `settings.json`-shaped block) straight from a program's declared capability surface — turning "what can this program do" into something checked *before* an agent's output ever runs, never hand-maintained.
+- **Capability manifest → agent permission bridge** (`capability-permission-bridge`). The capability layer it depends on has now landed, so this is unblocked: `pedroc permissions <file>.pedro` will derive an agent-harness permission manifest (starting with a Claude Code `settings.json`-shaped block) straight from a program's declared capability surface — turning "what can this program do" into something checked *before* an agent's output ever runs, never hand-maintained.
 - **Cross-target consistency as a CLI guarantee** (`cross-target-check-cli`, depends on the TypeScript backend). Promotes `tools/differential.py`'s cross-backend agreement check into `pedroc check <file>.pedro --targets python,typescript` — "this program behaves identically everywhere" becomes something any user's own code can assert, not just the compiler's own test suite.
 - **Property-based `expect` blocks** (`property-based-expect`). Extends `expect:` with a bounded quantified form (`for all n from 0 to 100: is_prime(n) implies n > 1`), enumerated and checked — a strict superset of today's example-based syntax, and a much higher correctness bar for agent-authored logic than a handful of examples.
 - **Tamper-evident generated output** (`verify-drift-detection`). Embeds a source content-hash in the "do not edit by hand" banner; `pedroc verify <file>.pedro <output>` detects drift — catches the common failure mode where a human hand-patches generated code and an agent later regenerates over it (or vice versa).
