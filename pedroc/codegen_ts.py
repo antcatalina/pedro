@@ -87,7 +87,9 @@ def _gen_type(t):
         return "void"
     kind = t[0]
     if kind == "name":
-        return TYPE_MAP.get(t[1], "any")
+        if t[1] in TYPE_MAP:
+            return TYPE_MAP[t[1]]
+        return t[1] if t[1] in _typenames else "any"
     if kind == "list":
         return f"{_gen_type(t[1])}[]"
     if kind == "map":
@@ -131,6 +133,11 @@ def _uses_pedro_error(program):
 _subject_counter = [0]
 _repeat_counter = [0]
 
+# Record definitions for the file being generated (reset per generate() call), so
+# RecordLit codegen can fill in defaulted fields — mirrors the Python backend.
+_records = {}
+_typenames = set()   # declared record + enum names (rendered by name, not `any`)
+
 
 def _fresh_subject():
     _subject_counter[0] += 1
@@ -143,14 +150,26 @@ def _fresh_repeat():
 
 
 def generate(program, filename="<pedro>"):
+    global _records, _typenames
     _subject_counter[0] = 0  # reset per call → deterministic temp names
     _repeat_counter[0] = 0
+    records = [it for it in program.items if isinstance(it, N.Record)]
+    enums = [it for it in program.items if isinstance(it, N.Enum)]
+    _records = {r.name: r for r in records}
+    _typenames = {r.name for r in records} | {en.name for en in enums}
+
     lines = [
         f"// Generated from {filename} by pedroc v0.1 (target: {program.target}). Do not edit by hand.",
         "",
         _PREAMBLE,
         "",
     ]
+    for en in enums:
+        lines.extend(_gen_enum(en))
+        lines.append("")
+    for rec in records:
+        lines.extend(_gen_record(rec))
+        lines.append("")
     if _uses_pedro_error(program):
         lines += ["class PedroError extends Error {}", ""]
 
@@ -196,6 +215,28 @@ def _gen_expect_item(item):
             "  }",
         ]
     raise TypeError(f"unknown expect item: {item!r}")
+
+
+def _gen_enum(en):
+    # A const object + a string-literal union type — the erasable-TS stand-in for
+    # `enum` (which Node's type-stripping can't run). The value and type share the
+    # name (declaration merging); `Color.red` is the string "red" at runtime, which
+    # matches the Python `str, Enum` backend so the two agree.
+    entries = ", ".join(f'{v}: "{v}"' for v in en.variants)
+    return [
+        f"const {en.name} = {{ {entries} }} as const;",
+        f"type {en.name} = typeof {en.name}[keyof typeof {en.name}];",
+    ]
+
+
+def _gen_record(rec):
+    lines = [f"interface {rec.name} {{"]
+    for (fname, ftype, _default) in rec.fields:
+        # Fields are always required in the interface: RecordLit codegen fills in
+        # defaulted fields explicitly, so every emitted literal is complete.
+        lines.append(f"  {fname}: {_gen_type(ftype)};")
+    lines.append("}")
+    return lines
 
 
 def _gen_task(task):
@@ -367,6 +408,16 @@ def _gen_expr(e):
         return f"[{', '.join(_gen_expr(i) for i in e.items)}]"
     if isinstance(e, N.MapLit):
         return "{" + ", ".join(f"[{_gen_expr(k)}]: {_gen_expr(v)}" for k, v in e.pairs) + "}"
+    if isinstance(e, N.RecordLit):
+        given = {fn: fv for fn, fv in e.fields}
+        rec = _records[e.type_name]
+        parts = []
+        for (fname, _ftype, default) in rec.fields:
+            if fname in given:
+                parts.append(f"{fname}: {_gen_expr(given[fname])}")
+            elif default is not None:
+                parts.append(f"{fname}: {_gen_expr(default)}")
+        return "{ " + ", ".join(parts) + " }"
     if isinstance(e, N.Convert):
         fn = CONVERT_MAP.get(e.to)
         if fn is None:

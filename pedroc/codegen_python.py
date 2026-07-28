@@ -30,7 +30,9 @@ def _gen_type(t):
         return "None"
     kind = t[0]
     if kind == "name":
-        return TYPE_MAP.get(t[1], "object")
+        if t[1] in TYPE_MAP:
+            return TYPE_MAP[t[1]]
+        return t[1] if t[1] in _typenames else "object"
     if kind == "list":
         return f"list[{_gen_type(t[1])}]"
     if kind == "map":
@@ -73,6 +75,12 @@ def _uses_pedro_error(program):
 
 _match_counter = [0]
 
+# Record definitions for the file currently being generated, so RecordLit codegen
+# can look up field order + defaults. Reset per generate() call (deterministic,
+# single-threaded), mirroring the _match_counter pattern.
+_records = {}
+_typenames = set()   # declared record + enum names (rendered by name, not `object`)
+
 
 def _fresh_subject():
     _match_counter[0] += 1
@@ -80,11 +88,36 @@ def _fresh_subject():
 
 
 def generate(program, filename="<pedro>"):
+    global _records, _typenames
     _match_counter[0] = 0  # reset per call → deterministic temp names
+    records = [it for it in program.items if isinstance(it, N.Record)]
+    enums = [it for it in program.items if isinstance(it, N.Enum)]
+    _records = {r.name: r for r in records}
+    _typenames = {r.name for r in records} | {en.name for en in enums}
+
     lines = [
         f"# Generated from {filename} by pedroc v0.1 (target: {program.target}). Do not edit by hand.",
         "",
     ]
+    # `from __future__ import annotations` makes dataclass field annotations lazy
+    # strings, so a record may reference another record/enum declared later.
+    future = ["from __future__ import annotations", ""] if records else []
+    imports = []
+    if records:
+        imports.append("from dataclasses import dataclass")
+    if enums:
+        imports.append("from enum import Enum")
+    lines += future
+    if imports:
+        lines += imports + [""]
+
+    for en in enums:
+        lines.extend(_gen_enum(en))
+        lines.append("")
+    for rec in records:
+        lines.extend(_gen_record(rec))
+        lines.append("")
+
     if _uses_pedro_error(program):
         lines += ["class PedroError(Exception):", "    pass", "", ""]
 
@@ -126,6 +159,25 @@ def _gen_expect_item(item):
             f'        assert str(_e) == "{msg}"',
         ]
     raise TypeError(f"unknown expect item: {item!r}")
+
+
+def _gen_enum(en):
+    # `str, Enum` mixin so `Color.red == "red"` — matches the TypeScript backend,
+    # where the enum is a plain string, keeping the two backends in agreement.
+    lines = [f"class {en.name}(str, Enum):"]
+    for v in en.variants:
+        lines.append(f'    {v} = "{v}"')
+    return lines
+
+
+def _gen_record(rec):
+    lines = ["@dataclass", f"class {rec.name}:"]
+    for (fname, ftype, default) in rec.fields:
+        decl = f"    {fname}: {_gen_type(ftype)}"
+        if default is not None:
+            decl += f" = {_gen_expr(default)}"
+        lines.append(decl)
+    return lines
 
 
 def _gen_task(task):
@@ -217,6 +269,21 @@ def _gen_stmt(s, indent):
     raise TypeError(f"unknown statement node: {s!r}")
 
 
+def _gen_record_lit(e):
+    """`RecordLit` -> `TypeName(field=value, ...)`. Missing defaulted fields are
+    filled in explicitly (so Python and TypeScript emit the identical field set),
+    in the record's declared field order for deterministic output."""
+    given = {fn: fv for fn, fv in e.fields}
+    rec = _records[e.type_name]
+    args = []
+    for (fname, _ftype, default) in rec.fields:
+        if fname in given:
+            args.append(f"{fname}={_gen_expr(given[fname])}")
+        elif default is not None:
+            args.append(f"{fname}={_gen_expr(default)}")
+    return f"{e.type_name}({', '.join(args)})"
+
+
 def _gen_str(value):
     if "{" in value or "}" in value:
         body = value.replace("\\{", "{{").replace("\\}", "}}")
@@ -248,6 +315,8 @@ def _gen_expr(e):
         return f"[{', '.join(_gen_expr(i) for i in e.items)}]"
     if isinstance(e, N.MapLit):
         return "{" + ", ".join(f"{_gen_expr(k)}: {_gen_expr(v)}" for k, v in e.pairs) + "}"
+    if isinstance(e, N.RecordLit):
+        return _gen_record_lit(e)
     if isinstance(e, N.Convert):
         fn = CONVERT_MAP.get(e.to)
         if fn is None:

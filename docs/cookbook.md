@@ -19,6 +19,7 @@ All examples target `python`, but the same source retargets — change the `targ
 - [Collections](#collections) — maximum, average, unique
 - [Recursion & dynamic programming](#recursion--dynamic-programming) — fibonacci_fast, min_coins
 - [Graphs](#graphs) — shortest_hops (BFS)
+- [Data modeling](#data-modeling) — tickets (record + enum)
 
 ---
 
@@ -474,6 +475,57 @@ expect:
     shortest_hops(g, "a", "d") == 2
     shortest_hops(g, "a", "a") == 0
 ```
+
+---
+
+## Data modeling
+
+### tickets — a `record` and an `enum`, with `match` over variants ✓
+
+Records give you typed, dotted fields (`t.priority`); enums give you named
+variants (`Priority.high`). A record literal `{ ... }` is typed by context —
+where a `Ticket` is expected it becomes one, and omitted fields fall back to the
+record's declared defaults.
+
+```pedro
+enum Priority:
+    low
+    medium
+    high
+
+record Ticket:
+    title: text
+    priority: Priority = Priority.medium
+    done: flag = false
+
+task is_urgent(t: Ticket) returns flag:
+    return t.priority is Priority.high and not t.done
+
+task open_count(tickets: list of Ticket) returns whole:
+    return count t in tickets where not t.done
+
+task promote(t: Ticket) returns Priority:
+    match t.priority:
+        case Priority.low:
+            return Priority.medium
+        case Priority.medium:
+            return Priority.high
+        case otherwise:
+            return Priority.high
+
+expect:
+    given a = { title: "deploy", priority: Priority.high, done: false }
+    given b = { title: "write docs", priority: Priority.low, done: true }
+    given c = { title: "triage inbox" }
+    is_urgent(a) == true
+    is_urgent(c) == false
+    open_count([a, b, c]) == 2
+    promote(c) is Priority.high
+    promote(b) is Priority.medium
+```
+
+See also `examples/order_total.pedro` — a `record LineItem` priced over a
+`list of LineItem`.
 
 ---
 

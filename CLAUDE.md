@@ -23,16 +23,19 @@ structured feedback — so the language must stay small, regular, and verifiable
 - `pedroc/` — the compiler: `lexer.py`, `parser.py`, `nodes.py` (AST),
   `codegen_python.py`, `codegen_ts.py` (the TypeScript backend), `check.py` (the oracle), `_expect_runner.py` (the sandboxed
   subprocess that runs `expect` blocks), `resolve.py` (name-resolution
-  pass → `undefined-name`/`unknown-task`), `suggest.py` (deterministic
+  pass → `undefined-name`/`unknown-task`), `annotate.py` (record-literal typing
+  pass → sets `RecordLit.type_name`, `ambiguous-record`/`unknown-field`/
+  `missing-field`), `suggest.py` (deterministic
   edit-distance "did you mean X?"), `errors.py`, `__main__.py` (CLI),
   `__init__.py` (`compile_source`).
 - `tests/` — `test_diagnostics.py` (structured-diagnostic tests) and
   `test_sandbox.py` (subprocess timeout/crash isolation); both are pytest-shaped
   but also self-runnable, and `tools/regress.py` invokes them.
-- `examples/cookbook/*.pedro` — the regression corpus (22 algorithms).
-- `examples/math.pedro` — integer algorithms. `examples/order_total.pedro` (records)
-  and `examples/signup.pedro` (capabilities) are language-designed but **not yet
-  compilable**.
+- `examples/cookbook/*.pedro` — the regression corpus (incl. `tickets.pedro`,
+  which models data with a `record` + an `enum`).
+- `examples/math.pedro` — integer algorithms. `examples/order_total.pedro`
+  (a `record`) now compiles and is in the corpus. `examples/signup.pedro`
+  (capabilities) is language-designed but **not yet compilable**.
 - `tools/regress.py` — compiles and RUNS the whole corpus (this is CI). Also runs
   a small fuzz smoke by default; `--fuzz`/`--diff`/`--slow` run the full sweeps.
 - `tools/backends.py` — per-backend "run + report expectations" adapter (Python via
@@ -119,12 +122,18 @@ knowing *what remains*. So:
 ## Current coverage (as of this writing)
 
 **Supported by the compiler:** scalars (`text`/`whole`/`number`/`flag`), lists,
-maps, `let`/reassign, `increase`/`decrease`, `when`/`otherwise`, `while`, `repeat`,
+maps, **`record`/`enum` types**, `let`/reassign, `increase`/`decrease`,
+`when`/`otherwise`, `while`, `repeat`,
 `for each` (+index), recursion, arithmetic + readable comparisons, membership,
 `followed by`, the collection operations (`count of`, `item at`, `filter`, `sum of`,
 `numbers from`, …), string interpolation, `fail with`, `match`/`case` (+ `case
-otherwise`), `try`/`on failure as err`, typed holes (`todo`), and `expect` with
-`given`/`fails with`. **Targets:** Python **and TypeScript** (`--target typescript`
+otherwise`, over values *and* enum variants), `try`/`on failure as err`, typed
+holes (`todo`), and `expect` with `given`/`fails with`. Records → Python
+`@dataclass` / TS `interface`; enums → Python `str, Enum` / TS const object. A
+`{ field: value }` literal (bare keys) is a **record literal typed by context**
+(resolved by `pedroc/annotate.py`); `{ "k": v }` (quoted keys) stays a map. A
+collection binds its element record type via the type annotation (`list of
+LineItem`), never by naming convention. **Targets:** Python **and TypeScript** (`--target typescript`
 → runnable `.ts`; `node` v24+ strips types, so no build step). Every corpus program
 runs green on both, and `tools/differential.py` asserts the two backends agree.
 **Diagnostics:** `line:col`, stable
@@ -136,7 +145,7 @@ timeout + restricted env, `pedroc/_expect_runner.py`), reporting a non-terminati
 or crashing program as `status:"timeout"`/`"error"` instead of hanging.
 
 **Designed but NOT yet in the compiler** (see `WORKLOG.md` roadmap, highest first):
-`record`/`enum` (so `match` currently switches over plain values, not enum
-variants), capabilities/effects + adapter layer. The `WORKLOG.md` roadmap section
-is the source of truth for what to build next. (The TypeScript backend has
-**landed** — `pedroc/codegen_ts.py`.)
+capabilities/effects + adapter layer (unblocks `examples/signup.pedro`). The
+`WORKLOG.md` roadmap section is the source of truth for what to build next. (The
+TypeScript backend and `record`/`enum` types have both **landed** —
+`pedroc/codegen_ts.py`, `pedroc/annotate.py`.)

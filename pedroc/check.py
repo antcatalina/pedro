@@ -22,6 +22,7 @@ from .lexer import tokenize
 from .parser import Parser
 from .errors import PedroSyntaxError, PedroNameError
 from .resolve import resolve
+from .annotate import annotate
 from . import nodes as N
 from .codegen_python import generate, _gen_expr
 
@@ -125,6 +126,14 @@ def check(source, filename="<pedro>", target="python", timeout=DEFAULT_TIMEOUT):
             report["errors"].append(_diag(source, e))
         first = name_errors[0]
         report["summary"] = f"{len(name_errors)} unresolved name(s); first at line {first.line}:{first.col}: {first.message}"
+        return report
+
+    type_errors = annotate(program)   # resolve record-literal types
+    if type_errors:
+        for e in type_errors:
+            report["errors"].append(_diag(source, e))
+        first = type_errors[0]
+        report["summary"] = f"{len(type_errors)} type error(s); first at line {first.line}:{first.col}: {first.message}"
         return report
 
     for h in _collect_holes(program):

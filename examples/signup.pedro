@@ -6,6 +6,12 @@ use capability database
 use capability email
 use capability crypto
 
+# pedro-note: this file is a DESIGN example — capabilities (`use capability …`)
+# aren't in the compiler yet, so it does not compile. It shows the resolved rule
+# for how a table binds to a record: EXPLICITLY, not by naming convention. A
+# future `database` capability will require the row type to be declared (e.g.
+# `table users: User`), so `users` holds `User` rows because it is stated — Pedro
+# never singularizes `users` into `User`. See docs/language-card.md ("Records").
 record User:
     id: text
     email: text

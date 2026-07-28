@@ -7,7 +7,7 @@ import json
 import os
 import sys
 
-from . import compile_source, PedroSyntaxError
+from . import compile_source, PedroSyntaxError, PedroTypeError
 from .check import check
 
 BUILD_USAGE = "usage: python -m pedroc build <file.pedro> [-o <out.py>] [--target python]"
@@ -40,7 +40,7 @@ def _cmd_build(args):
             return 2
     try:
         code = compile_source(_read(infile), filename=os.path.basename(infile), target=target)
-    except PedroSyntaxError as e:
+    except (PedroSyntaxError, PedroTypeError) as e:
         loc = f"{e.line}" if e.col is None else f"{e.line}:{e.col}"
         print(f"{infile}:{loc}: error [{e.code}]: {e.message}", file=sys.stderr)
         if e.suggestion:

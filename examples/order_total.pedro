@@ -7,6 +7,11 @@ record LineItem:
     price: number
     quantity: whole
 
+# pedro-note: a collection binds to its record type EXPLICITLY, through the type
+# annotation — `items: list of LineItem` says these rows are LineItems. Pedro never
+# infers a row type from a collection's NAME (no `items` -> `Item` pluralization
+# magic); the type is always written down. The same rule will govern a future
+# `database` capability: a table declares its record type, it is not guessed.
 task order_total(items: list of LineItem, discount_percent: number) returns number:
     let subtotal = 0
     for each item in items:

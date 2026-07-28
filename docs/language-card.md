@@ -24,7 +24,8 @@ check it:
      `suggestion` — the nearest known name/keyword ("did you mean X?"); if it's
      right, just apply it. Common codes: `unexpected-token`, `expected-expression`,
      `bad-indentation`, `unterminated-string`, `undefined-name`, `unknown-task`,
-     `empty-match`, `case-after-otherwise`.
+     `empty-match`, `case-after-otherwise`, `ambiguous-record`, `unknown-field`,
+     `missing-field`, `empty-record`, `empty-enum`.
    - `holes[]` → resolve each `todo`, or ask the user for the missing detail.
    - `expectations[].passed == false` → your logic is wrong; `detail` gives
      `got X, expected <op> Y`. Fix and re-check.
@@ -46,6 +47,12 @@ check it:
 ```pedro
 target: python                       # required first line (or `target: typescript`)
 
+record <Name>:                       # optional: data types (see "Records & enums")
+    <field>: <type> [= <default>]
+
+enum <Name>:
+    <variant>
+
 task <name>(<p>: <type>, ...) returns <type>:
     <statements>
 
@@ -56,7 +63,8 @@ expect:
 ## Types (supported)
 
 `text` · `whole` (integer) · `number` (decimal) · `flag` (true/false) · `nothing`
-`list of <T>` · `map of <K> to <V>` · `optional <T>` (or `<T>?`)
+`list of <T>` · `map of <K> to <V>` · `optional <T>` (or `<T>?`) · a `record` or
+`enum` name (see below)
 
 ## Statements
 
@@ -87,7 +95,8 @@ expect:
 - string concat: `a followed by b`
 - convert: `value as text` / `as whole` / `as number`
 - literals: `42`, `3.14`, `true`, `false`, `"text with {interpolation}"`,
-  `[1, 2, 3]` (list), `{ key: value }` (map), `nothing`
+  `[1, 2, 3]` (list), `{ "k": value }` (map — string/expr keys),
+  `{ field: value }` (record — bare field-name keys; see below), `nothing`
 - collection ops: `count of x` · `item at i in x` · `first of x` · `last of x` ·
   `copy of x` · `characters of x` · `take n from x` · `drop n from x` ·
   `split x by sep` · `sort x` (ascending only — no `by <key>`/`descending` yet) ·
@@ -97,10 +106,53 @@ expect:
   (first match or `nothing`)
 - calls: `factorial(n - 1)` — recursion is fine
 
+## Records & enums (supported)
+
+Declare data types at the top level, alongside tasks:
+
+```pedro
+enum Priority:
+    low
+    medium
+    high
+
+record Ticket:
+    title: text
+    priority: Priority = Priority.medium    # field default
+    done: flag = false
+```
+
+- A `record` → a Python `@dataclass` / a TypeScript `interface`. Access fields
+  with `.`: `t.title`. Fields may have defaults.
+- An `enum` → a Python `str, Enum` / a TypeScript const object. Reference a
+  variant as `Priority.high`; at runtime it is the string `"high"` on both
+  backends, so `match`/`case` and `==` work over enum variants.
+
+**Record literals are typed by CONTEXT.** Write `{ field: value, ... }` (bare
+field-name keys — *not* a quoted-key map) where a record is expected: a typed task
+argument, a `return`, another record's field, or a `list of <Record>` element. The
+literal becomes that record; omitted fields with defaults are filled in.
+
+```pedro
+task is_urgent(t: Ticket) returns flag:
+    return t.priority is Priority.high and not t.done
+
+expect:
+    is_urgent({ title: "deploy", priority: Priority.high, done: false }) == true
+    is_urgent({ title: "triage" }) == false     # priority/done use their defaults
+```
+
+If no expected type reaches a `{ ... }`, `pedroc` falls back to the unique record
+whose fields it matches; if that's ambiguous or a field is wrong/missing you get
+`ambiguous-record` / `unknown-field` / `missing-field`.
+
+**A collection binds to its record type EXPLICITLY, via the type annotation**
+(`items: list of LineItem`), never by naming convention — Pedro does not turn a
+collection named `users` into `User` rows. State the element type.
+
 ## NOT yet supported — do not use until the compiler catches up
 
-`record`/`enum` declarations (so `match` compares plain values, not enum
-variants), capabilities/effects (`use capability …` and its verbs), modules
+Capabilities/effects (`use capability …` and its verbs), modules
 (`use "file.pedro"`), the `raw <lang>: … end raw` escape hatch, loop
 `stop`/`skip`, keyed/descending `sort`, and the predicates `is a valid email` /
 `is a valid url` / `is even` / `is odd`. If the task needs one of these: write

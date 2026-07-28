@@ -19,6 +19,7 @@ the one that hung (on timeout) — see check.py.
 """
 import json
 import sys
+import types
 
 
 def _emit(rec):
@@ -31,7 +32,14 @@ def main():
     code = payload["code"]
     steps = payload["steps"]
 
-    ns = {"__name__": "pedroc_check"}
+    # Exec into a REAL module object registered in sys.modules. `@dataclass`
+    # resolves its enclosing module via `sys.modules[cls.__module__]`, so a bare
+    # dict namespace makes record generation crash; a registered module fixes it.
+    # `__name__` is not "__main__", so the generated `if __name__ == "__main__"`
+    # expect block stays dormant — we run the steps ourselves below.
+    module = types.ModuleType("pedroc_check")
+    sys.modules["pedroc_check"] = module
+    ns = module.__dict__
     try:
         exec(compile(code, "<pedro-generated>", "exec"), ns)
     except Exception as e:  # a failure loading generated code is a compiler bug

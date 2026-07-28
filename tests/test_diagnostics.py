@@ -105,6 +105,43 @@ def test_empty_match_reports_code():
     assert err["hint"]
 
 
+# --- records & enums --------------------------------------------------------
+
+_REC = ("target: python\n\nenum Color:\n    red\n    green\n\n"
+        "record Dot:\n    x: whole\n    y: whole\n    hue: Color = Color.red\n\n"
+        "task at(d: Dot) returns whole:\n    return d.x\n\nexpect:\n")
+
+
+def test_unknown_field_reports_code_and_suggestion():
+    src = _REC + "    at({ x: 1, y: 2, z: 3 }) == 1\n"
+    _, err = _first_error(src)
+    assert err["code"] == "unknown-field"
+    assert err["message"] == "record 'Dot' has no field 'z'"
+    assert err["suggestion"] in ("x", "y")   # nearest declared field
+    assert err["hint"]
+
+
+def test_missing_required_field_reports_code():
+    src = _REC + "    at({ x: 1 }) == 1\n"       # y is required (no default)
+    _, err = _first_error(src)
+    assert err["code"] == "missing-field"
+    assert "'y'" in err["message"]
+
+
+def test_ambiguous_record_when_no_expected_type():
+    src = _REC + "    given d = { q: 9 }\n    at(d) == 1\n"
+    _, err = _first_error(src)
+    assert err["code"] == "ambiguous-record"
+    assert err["hint"]
+
+
+def test_valid_record_and_enum_program_is_clean():
+    # a record literal typed by its expected argument, an enum default filled in
+    report = check(_REC + "    at({ x: 4, y: 5 }) == 4\n", filename="<test>")
+    assert report["ok"] is True
+    assert report["errors"] == []
+
+
 # --- report shape -----------------------------------------------------------
 
 def test_capabilities_surface_present_and_compact():

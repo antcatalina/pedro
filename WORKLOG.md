@@ -5,6 +5,70 @@ resume cleanly across sessions.
 
 ---
 
+## 2026-07-28 — `record` and `enum` types LANDED (roadmap #2)
+
+Pedro can model data now. `record` and `enum` are top-level declarations that
+compile on **both** backends, and `examples/order_total.pedro` (which declares
+`record LineItem`) is finally a real, passing corpus program on Python and
+TypeScript — it was a design-only example for weeks.
+
+**Syntax + the map-vs-record split.** A `record Name:` block has typed fields with
+optional defaults; an `enum Name:` block lists variant names (referenced as
+`Name.variant`). The key design call: a `{ ... }` literal is classified
+**syntactically** — bare-identifier keys (`{ name: "pen" }`) make it a **record
+literal**, string/expression keys (`{ "a": 1 }`) keep it a **map**. This avoids
+type inference for the *classification* step (the only corpus map, in dp_graph,
+already uses string keys, so nothing regressed).
+
+**Which record a literal is → `pedroc/annotate.py`.** A record literal carries no
+type name in the source, so a new post-parse pass propagates an EXPECTED TYPE
+top-down from the anchors that know it — a task-call argument (callee param type),
+a `return` (task return type), a nested record field, and `list`/`map` element
+types — and sets `RecordLit.type_name`. No expected type → a unique field-set
+match. Anything unresolved is `ambiguous-record`; a bad/absent field is
+`unknown-field`/`missing-field`. The pass runs in both `compile_source` (build)
+and `check`.
+
+**Codegen (both backends, kept in agreement).**
+- Python: record → `@dataclass` (so `item.price` is attribute access, not a dict
+  lookup), with `from __future__ import annotations` so field-type order never
+  bites; enum → `class C(str, Enum)` (the `str` mixin makes `C.x == "x"`, matching
+  the TS string). A record literal → `C(field=value, ...)`.
+- TypeScript: record → `interface` + a plain object literal; enum → a
+  `const C = { x: "x", ... } as const` value plus a `type C = ...` union (the
+  erasable stand-in for `enum`, which Node's type-stripping can't run). `C.x` is
+  just the string `"x"`, so `match`/`==` over variants agree with Python.
+- Record-literal codegen **fills in any omitted defaulted fields at codegen time**,
+  so both backends emit the identical, complete field set (TS interface fields stay
+  required; the two lanes can't drift).
+
+**Sandbox fix.** `@dataclass` resolves its module via `sys.modules[cls.__module__]`,
+so the check runner's bare-dict namespace made record programs crash on load. The
+runner now execs into a real `types.ModuleType("pedroc_check")` registered in
+`sys.modules` (still not `__main__`, so the generated expect block stays dormant).
+
+**Design question resolved (table → record binding).** WORKLOG's open question was
+how a collection/table name binds to its record type. Rule chosen (simplest,
+deterministic): **explicitly, via the type annotation** — `items: list of LineItem`
+— never by naming convention (no `users` → `User` pluralization). Documented in
+`docs/language-card.md`; `# pedro-note` added where it applies in
+`examples/order_total.pedro` and `examples/signup.pedro` (the future-`database`
+example).
+
+**Proof + regression.** `examples/order_total.pedro` compiles + passes, and a new
+`examples/cookbook/tickets.pedro` models an issue tracker with a `record Ticket`, an
+`enum Priority` (with defaults), and a `match` over enum variants — green on both
+backends. Both files were added to the `regress.py` + `differential.py` corpus.
+Four new record/enum diagnostic tests in `tests/test_diagnostics.py` (16/16).
+`python tools/regress.py --slow` → **65 corpus expectations + 10/10 TS + 16
+diagnostic + 5 sandbox + 200-program fuzz over python+typescript + full
+differential, all green.** Output verified byte-identical on recompile.
+
+**Next (roadmap):** capabilities + adapter layer (#3, unblocks
+`examples/signup.pedro`); promote the differential into `pedroc check --targets`.
+
+---
+
 ## 2026-07-28 — TypeScript backend LANDED (roadmap #1)
 
 Pedro now compiles to **TypeScript as well as Python** from the same AST — the

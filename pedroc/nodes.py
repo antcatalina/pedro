@@ -24,6 +24,22 @@ class Task:
 
 
 @dataclass
+class Record:
+    """`record Name:` with typed fields and optional defaults.
+    Python -> @dataclass; TypeScript -> interface."""
+    name: str
+    fields: list         # list of (field_name, type, default_expr_or_None)
+
+
+@dataclass
+class Enum:
+    """`enum Name:` with named variants, referenced as `Name.variant`.
+    Python -> `class Name(str, Enum)`; TypeScript -> a const object + type."""
+    name: str
+    variants: list       # list of variant names (str)
+
+
+@dataclass
 class Expect:
     items: list          # list of ("given", name, expr) | ("assert", expr) | ("fails", expr, msg)
 
@@ -193,6 +209,18 @@ class ListLit:
 @dataclass
 class MapLit:
     pairs: list          # list of (key_expr, value_expr)
+
+
+@dataclass
+class RecordLit:
+    """A record literal `{ field: value, ... }` (bare-identifier keys). Which
+    `record` type it constructs is resolved by the annotate pass, which fills in
+    `type_name` from the expected type (call arg, return, field, list/map element)
+    or a unique field-set match."""
+    fields: list         # list of (field_name, value_expr)
+    line: Optional[int] = None
+    col: Optional[int] = None
+    type_name: Optional[str] = None   # filled in by annotate.py
 
 
 @dataclass

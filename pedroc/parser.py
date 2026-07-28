@@ -75,15 +75,19 @@ class Parser:
         while self._type() != "EOF":
             if self._is_name("task"):
                 items.append(self._parse_task())
+            elif self._is_name("record"):
+                items.append(self._parse_record())
+            elif self._is_name("enum"):
+                items.append(self._parse_enum())
             elif self._is_name("expect"):
                 items.append(self._parse_expect())
             else:
                 t = self._cur()
                 raise PedroSyntaxError(
-                    t[2], f"expected 'task' or 'expect', found {t[1]!r}",
+                    t[2], f"expected 'task', 'record', 'enum', or 'expect', found {t[1]!r}",
                     code="unexpected-token", col=t[3],
-                    hint="top-level items are `task <name>(...) returns <type>:` and `expect:`",
-                    suggestion=nearest(t[1], ("task", "expect")),
+                    hint="top-level items are `record`/`enum` declarations, `task <name>(...) returns <type>:`, and `expect:`",
+                    suggestion=nearest(t[1], ("task", "record", "enum", "expect")),
                 )
             self._skip_newlines()
         return N.Program(target=target, items=items)
@@ -132,6 +136,51 @@ class Parser:
         self._expect("NEWLINE")
         body = self._parse_block()
         return N.Task(name=name, params=params, ret_type=ret_type, body=body)
+
+    def _parse_record(self):
+        self._expect("NAME", "record")
+        name = self._expect("NAME")[1]
+        self._expect("OP", ":")
+        self._expect("NEWLINE")
+        self._expect("INDENT")
+        fields = []
+        while self._type() == "NAME":
+            fname = self._advance()[1]
+            self._expect("OP", ":")
+            ftype = self._parse_type()
+            default = None
+            if self._is("OP", "="):
+                self._advance()
+                default = self._parse_expr()
+            self._expect("NEWLINE")
+            fields.append((fname, ftype, default))
+        if not fields:
+            raise PedroSyntaxError(
+                self._line(), f"record {name!r} has no fields",
+                code="empty-record", col=self._col(),
+                hint="add at least one `<field>: <type>` line under the record",
+            )
+        self._expect("DEDENT")
+        return N.Record(name=name, fields=fields)
+
+    def _parse_enum(self):
+        self._expect("NAME", "enum")
+        name = self._expect("NAME")[1]
+        self._expect("OP", ":")
+        self._expect("NEWLINE")
+        self._expect("INDENT")
+        variants = []
+        while self._type() == "NAME":
+            variants.append(self._advance()[1])
+            self._expect("NEWLINE")
+        if not variants:
+            raise PedroSyntaxError(
+                self._line(), f"enum {name!r} has no variants",
+                code="empty-enum", col=self._col(),
+                hint="list one variant name per line under the enum",
+            )
+        self._expect("DEDENT")
+        return N.Enum(name=name, variants=variants)
 
     def _parse_param(self):
         pname = self._expect("NAME")[1]
@@ -518,7 +567,20 @@ class Parser:
             self._expect("OP", "]")
             return self._parse_postfix(N.ListLit(items=items))
         if t[0] == "OP" and t[1] == "{":
+            line, col = t[2], t[3]
             self._advance()
+            # A `{...}` with bare-identifier keys (`{ name: ... }`) is a RECORD
+            # literal; with string/number/expression keys (`{ "k": ... }`) it is a
+            # MAP. This syntactic split keeps the two unambiguous without type
+            # inference — see docs/language-card.md.
+            if self._is("NAME") and self._peek()[0] == "OP" and self._peek()[1] == ":":
+                fields = []
+                fields.append(self._parse_field_pair())
+                while self._is("OP", ","):
+                    self._advance()
+                    fields.append(self._parse_field_pair())
+                self._expect("OP", "}")
+                return self._parse_postfix(N.RecordLit(fields=fields, line=line, col=col))
             pairs = []
             if not self._is("OP", "}"):
                 pairs.append(self._parse_pair())
@@ -539,6 +601,14 @@ class Parser:
         self._expect("OP", ":")
         value = self._parse_expr()
         return (key, value)
+
+    def _parse_field_pair(self):
+        """`<field>: <value>` inside a record literal — the key is a bare
+        field name (a label), not an expression."""
+        fname = self._expect("NAME")[1]
+        self._expect("OP", ":")
+        value = self._parse_expr()
+        return (fname, value)
 
     def _parse_postfix(self, node):
         while True:

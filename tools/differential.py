@@ -29,6 +29,7 @@ from tools.backends import run_python, run_typescript, ts_available  # noqa: E40
 def corpus():
     files = sorted(glob.glob(os.path.join(ROOT, "examples", "cookbook", "*.pedro")))
     files.append(os.path.join(ROOT, "examples", "math.pedro"))
+    files.append(os.path.join(ROOT, "examples", "order_total.pedro"))
     return files
 
 

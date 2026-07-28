@@ -21,6 +21,23 @@ class PedroSyntaxError(Exception):
         super().__init__(f"{where}: {message}")
 
 
+class PedroTypeError(Exception):
+    """A type/annotation error found after parsing, e.g. a record literal whose
+    `record` type can't be determined, an unknown field, or a missing required
+    field. Carries `line`/`col`/`code`/`hint`/`suggestion` like the other
+    diagnostics so `check --json` and `build` report it uniformly."""
+
+    def __init__(self, line, col, message, code, hint=None, suggestion=None):
+        self.line = line
+        self.col = col
+        self.message = message
+        self.code = code
+        self.hint = hint
+        self.suggestion = suggestion
+        where = f"line {line}" if col is None else f"line {line}:{col}"
+        super().__init__(f"{where}: {message}")
+
+
 class PedroNameError(Exception):
     """A name-resolution error (unknown identifier / task), found by the resolver
     pass after a successful parse. Carries `line`/`col`/`suggestion` like a syntax

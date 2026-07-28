@@ -2,7 +2,7 @@
 
 **The goal: the easiest language to pick up for LLM-driven development.** Small enough to fit in a single prompt, precise enough for a real compiler to check your work against. Claude writes Pedro from your plain-English request; a real, deterministic compiler (`pedroc`) — **not an LLM** — turns it into the programming language of your choice.
 
-> **Status:** v0.1. `pedroc` deterministically compiles a real, growing subset of the language — scalars, lists, maps, control flow (including `match`/`case` and `try`/`on failure`), recursion, and the collection operations — to **both Python and TypeScript**, verified by running the entire [cookbook](docs/cookbook.md) (22 algorithms) on *each* backend and asserting they agree. `record`/`enum` types, capabilities/effects, and modules are fully designed and next up — see [WORKLOG.md](WORKLOG.md) for exactly what's real today vs. still ahead. This README marks every not-yet-compiled construct with 🧭.
+> **Status:** v0.1. `pedroc` deterministically compiles a real, growing subset of the language — scalars, lists, maps, `record`/`enum` types, control flow (including `match`/`case` and `try`/`on failure`), recursion, and the collection operations — to **both Python and TypeScript**, verified by running the entire [cookbook](docs/cookbook.md) on *each* backend and asserting they agree. Capabilities/effects and modules are fully designed and next up — see [WORKLOG.md](WORKLOG.md) for exactly what's real today vs. still ahead. This README marks every not-yet-compiled construct with 🧭.
 
 Pedro is the **verifiable intermediate language between natural-language intent and executable code.** You (or Claude) write clear, keyworded pseudocode and tag a target (`target: python`); `pedroc` compiles it to idiomatic code. The design splits one job into two:
 
@@ -136,11 +136,11 @@ PYTHONPATH=. python -m pedroc check examples/cookbook/recover.pedro --json
 
 ---
 
-## Where this is heading — the full vision 🧭
+## One source, two targets, with data modeling — real today
 
-The rest of this README documents the **complete language design**, including pieces `pedroc` doesn't compile yet. Every such section is marked 🧭. Here's the shape of what's coming: the same source, with `record` types and a second backend.
-
-`examples/order_total.pedro` (🧭 records — not yet parsed by `pedroc`):
+`record` and `enum` types are **implemented** and compile on both backends.
+`examples/order_total.pedro` is a corpus program — it passes `pedroc check` and
+runs green on Python *and* TypeScript:
 
 ```pedro
 target: python 3.11
@@ -167,12 +167,16 @@ expect:
     order_total([ { name: "desk", price: 120, quantity: 1 } ], 10) == 102
 ```
 
-Once records land, this is the intended Python output:
+A `{ ... }` literal with bare field names (`{ name: "pen", ... }`) is a **record
+literal**, typed by context: where a `LineItem` is expected, it becomes one. The
+real Python output (`pedroc build examples/order_total.pedro`) — record → `@dataclass`:
 
 ```python
 # Generated from order_total.pedro by pedroc v0.1 (target: python). Do not edit by hand.
-from dataclasses import dataclass
 
+from __future__ import annotations
+
+from dataclasses import dataclass
 
 @dataclass
 class LineItem:
@@ -180,18 +184,17 @@ class LineItem:
     price: float
     quantity: int
 
-
 def order_total(items: list[LineItem], discount_percent: float) -> float:
-    subtotal = 0.0
+    subtotal = 0
     for item in items:
-        subtotal += item.price * item.quantity
-    if subtotal > 100:
+        subtotal += (item.price * item.quantity)
+    if (subtotal > 100):
         discount_percent += 5
-    discount = subtotal * discount_percent / 100
-    return subtotal - discount
+    discount = ((subtotal * discount_percent) / 100)
+    return (subtotal - discount)
 ```
 
-The **TypeScript backend is real** (`target: typescript` compiles and runs on `node`) — but this *particular* example still uses `record` types, which aren't parsed yet (🧭), so it's shown here as intended output. Once records land, the same source is meant to compile to:
+…and the real TypeScript output (`--target typescript`) — record → `interface` + object literal:
 
 ```typescript
 // Generated from order_total.pedro by pedroc v0.1 (target: typescript). Do not edit by hand.
@@ -204,17 +207,19 @@ interface LineItem {
 function order_total(items: LineItem[], discount_percent: number): number {
   let subtotal = 0;
   for (const item of items) {
-    subtotal += item.price * item.quantity;
+    subtotal += (item.price * item.quantity);
   }
-  if (subtotal > 100) {
+  if ((subtotal > 100)) {
     discount_percent += 5;
   }
-  const discount = (subtotal * discount_percent) / 100;
-  return subtotal - discount;
+  let discount = ((subtotal * discount_percent) / 100);
+  return (subtotal - discount);
 }
 ```
 
-`pedroc` preserves your identifiers verbatim across targets (no case conversion) — the same names appear in the Python and TypeScript output, so a Pedro file reads the same whichever backend you compile it to. For a construct that compiles **today**, build any cookbook example with `--target typescript` and run it with `node` to see the real output.
+`pedroc` preserves your identifiers verbatim across targets (no case conversion) — the same names appear in the Python and TypeScript output, so a Pedro file reads the same whichever backend you compile it to. `examples/cookbook/tickets.pedro` models an issue tracker with both a `record` and an `enum` if you want a second, matcher-heavy example.
+
+The rest of this README documents the **complete language design**, including pieces `pedroc` doesn't compile yet. Every such section is marked 🧭 — check [WORKLOG.md](WORKLOG.md) for the live, authoritative list, or run `pedroc check` and let the compiler tell you.
 
 ---
 
@@ -254,7 +259,7 @@ Composite types map too: `list of T` → `T[]`, `map of K to V` → `Record<K, V
 - `list of <T>` → `list[T]` — **implemented**
 - `map of <K> to <V>` → `dict[K, V]` — **implemented**
 - `optional <T>` (sugar: `<T>?`) → `T | None` — **implemented**
-- `record` and `enum` (see below) — 🧭 **designed, not yet parsed**
+- `record` and `enum` (see below) — **implemented** (record → `@dataclass` / `interface`; enum → `str, Enum` / const object)
 
 ### Variables — implemented
 
@@ -272,7 +277,8 @@ Pedro identifiers are written in `snake_case`; the compiler converts them to the
 42        3.14            # whole, number
 true      false           # flag
 [1, 2, 3]                 # list
-{ id: "u1", age: 36 }     # map literal (typed record construction is 🧭)
+{ "id": "u1", "n": 36 }   # map literal (string/expression keys)
+{ id: "u1", age: 36 }     # record literal (bare field-name keys; typed by context)
 nothing                   # the empty value
 ```
 
@@ -314,9 +320,12 @@ task discount(price: number, percent: number = 0) returns number:
 
 Parameters may have defaults. Return a value with `return <expr>` (or a bare `return`). A task with no `returns` clause returns `nothing` and needn't return a value.
 
-### Records and enums 🧭 — designed, not yet parsed
+### Records and enums — implemented
 
-`record`/`enum` declarations aren't recognized by the parser yet (top-level items are currently limited to `task` and `expect`). This is the intended shape, and the top of the roadmap in [WORKLOG.md](WORKLOG.md):
+Records and enums are top-level declarations. A `record` becomes a Python
+`@dataclass` (attribute access, `u.email`) / a TypeScript `interface`; an `enum`
+becomes a Python `str, Enum` / a TypeScript const object, so `Status.active` is
+the string `"active"` at runtime on both backends (they agree).
 
 ```pedro
 record User:
@@ -330,12 +339,26 @@ enum Status:
     closed
 ```
 
-Construct a record with a typed map literal, and reference enum values by name:
+Construct a record with a **record literal** — a `{ ... }` with bare field-name
+keys — and reference enum variants by name:
 
 ```pedro
-let u = User { id: "u1", email: "a@b.c" }
 let s = Status.active
+some_task({ id: "u1", email: "a@b.c" })   # { age } omitted → its default (0) is filled in
 ```
+
+A record literal has no type name written on it; `pedroc` types it **by
+context** — where a `User` is expected (a typed task argument, a `return`, a
+record field, or a `list of User` element), the `{ ... }` becomes a `User`. If no
+expected type reaches it, `pedroc` falls back to a unique field-set match, and
+reports `ambiguous-record` / `unknown-field` / `missing-field` otherwise.
+
+**How a collection binds to its record type:** explicitly, through the type
+annotation — `items: list of LineItem` says the rows are `LineItem`s. Pedro never
+infers a row type from a collection's *name* (no `users` → `User` pluralization).
+The same rule will govern the future `database` capability: a table declares its
+record type. (See `examples/order_total.pedro` and `examples/signup.pedro` for the
+`# pedro-note` where this applies.)
 
 ### Conditionals — implemented
 
@@ -368,7 +391,7 @@ while remaining is greater than 0:
 
 All of the above are **implemented**. 🧭 There is no `break`/`continue` yet (no `stop`/`skip` keywords) — structure loops (e.g. a guard condition, or `find one … where …` instead of a hand-rolled search loop) to avoid needing early exit for now.
 
-### Pattern matching — implemented (over values; enum variants are 🧭)
+### Pattern matching — implemented (over values *and* enum variants)
 
 ```pedro
 match status:
@@ -380,7 +403,7 @@ match status:
         return "unknown"
 ```
 
-`match`/`case`/`case otherwise` work today, comparing the subject by equality against each case. Matching on actual `Enum.variant` values (as in the `Status.active` example above) needs `enum` first.
+`match`/`case`/`case otherwise` work today, comparing the subject by equality against each case — over plain values *or* `Enum.variant` values (`case Status.active:`), as in `examples/cookbook/tickets.pedro`.
 
 ### Errors — implemented
 
@@ -546,8 +569,8 @@ pedro/
 │   └── SPEC.md              # normative spec                            (planned)
 ├── examples/
 │   ├── math.pedro          # integer algorithms
-│   ├── cookbook/            # the 22 cookbook algorithms as .pedro (regression corpus)
-│   ├── order_total.pedro   # uses records       (language-designed; not yet compiled)
+│   ├── cookbook/            # the cookbook algorithms as .pedro (regression corpus; incl. tickets.pedro — record + enum)
+│   ├── order_total.pedro   # uses a record       (compiles + runs on both backends; in the corpus)
 │   └── signup.pedro        # uses capabilities   (language-designed; not yet compiled)
 ├── skills/write-pedro/     # the Claude Code authoring skill (NL -> Pedro)
 └── tools/
@@ -571,8 +594,8 @@ Repo-specific conventions and guardrails for anyone — or any Claude agent — 
 
 Live status and next steps live in [WORKLOG.md](WORKLOG.md). In brief:
 
-- **Done** — the language design; a real deterministic compiler (`pedroc`) for the scalar/list/map/control-flow subset → **Python and TypeScript**; the `pedroc check` loop, typed holes, and structured diagnostics, sandboxed in a subprocess; the [cookbook](docs/cookbook.md) (22 algorithms) as a passing regression suite (`tools/regress.py`) on both backends; a differential tester + seedable grammar fuzzer running live over both backends (`tools/differential.py`, `tools/fuzz.py`).
-- **Next (highest priority first)** — `record`/`enum` types; capabilities + the adapter layer (unlocks "auditable by construction"); promoting the differential check into a `pedroc check --targets` guarantee; then `docs/SPEC.md`.
+- **Done** — the language design; a real deterministic compiler (`pedroc`) for the scalar/list/map/`record`/`enum`/control-flow subset → **Python and TypeScript**; the `pedroc check` loop, typed holes, and structured diagnostics, sandboxed in a subprocess; the [cookbook](docs/cookbook.md) as a passing regression suite (`tools/regress.py`) on both backends; a differential tester + seedable grammar fuzzer running live over both backends (`tools/differential.py`, `tools/fuzz.py`).
+- **Next (highest priority first)** — capabilities + the adapter layer (unlocks "auditable by construction"); promoting the differential check into a `pedroc check --targets` guarantee; then `docs/SPEC.md`.
 
 ### Committed: bets that make Pedro distinctly agent-native 🧭
 

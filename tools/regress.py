@@ -29,6 +29,7 @@ from pedroc.check import check  # noqa: E402
 def corpus():
     files = sorted(glob.glob(os.path.join(ROOT, "examples", "cookbook", "*.pedro")))
     files.append(os.path.join(ROOT, "examples", "math.pedro"))
+    files.append(os.path.join(ROOT, "examples", "order_total.pedro"))
     return files
 
 

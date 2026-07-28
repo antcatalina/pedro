@@ -1,0 +1,42 @@
+# Model a small issue tracker with a `record` (Ticket) and an `enum` (Priority).
+# A ticket literal `{ title: ..., priority: ..., done: ... }` is typed by context:
+# where a `Ticket` is expected, the `{ ... }` becomes a Ticket; omitted fields
+# fall back to the record's declared defaults.
+target: python
+
+enum Priority:
+    low
+    medium
+    high
+
+record Ticket:
+    title: text
+    priority: Priority = Priority.medium
+    done: flag = false
+
+task is_urgent(t: Ticket) returns flag:
+    return t.priority is Priority.high and not t.done
+
+task open_count(tickets: list of Ticket) returns whole:
+    return count t in tickets where not t.done
+
+task promote(t: Ticket) returns Priority:
+    # bump a ticket's priority one level (high stays high)
+    match t.priority:
+        case Priority.low:
+            return Priority.medium
+        case Priority.medium:
+            return Priority.high
+        case otherwise:
+            return Priority.high
+
+expect:
+    given a = { title: "deploy", priority: Priority.high, done: false }
+    given b = { title: "write docs", priority: Priority.low, done: true }
+    given c = { title: "triage inbox" }
+    is_urgent(a) == true
+    is_urgent(b) == false
+    is_urgent(c) == false
+    open_count([a, b, c]) == 2
+    promote(c) is Priority.high
+    promote(b) is Priority.medium

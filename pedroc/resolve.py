@@ -27,6 +27,9 @@ def resolve(program):
     from .errors import PedroNameError  # local import avoids a cycle at import time
 
     task_names = {it.name for it in program.items if isinstance(it, N.Task)}
+    # Record and enum names resolve as globals: an enum is referenced as
+    # `Color.red` (an Attr on `Name("Color")`), so the bare name must be known.
+    type_names = {it.name for it in program.items if isinstance(it, (N.Record, N.Enum))}
     errors = []
 
     def report(node, code, message, candidates):
@@ -69,6 +72,10 @@ def resolve(program):
             for k, v in e.pairs:
                 check_expr(k, env)
                 check_expr(v, env)
+        elif isinstance(e, N.RecordLit):
+            # Field-name keys are labels, not references — only values resolve.
+            for _fn, fv in e.fields:
+                check_expr(fv, env)
         elif isinstance(e, N.Convert):
             check_expr(e.expr, env)
         elif isinstance(e, N.Builtin):
@@ -90,10 +97,10 @@ def resolve(program):
 
     for it in program.items:
         if isinstance(it, N.Task):
-            env = _GLOBALS | {p[0] for p in it.params} | _bound_in(it.body)
+            env = _GLOBALS | type_names | {p[0] for p in it.params} | _bound_in(it.body)
             check_stmts(it.body, env)
         elif isinstance(it, N.Expect):
-            env = set(_GLOBALS)
+            env = _GLOBALS | type_names
             for item in it.items:
                 if item[0] == "given":
                     check_expr(item[2], env | task_names)
@@ -206,6 +213,9 @@ def _bound_in(stmts):
             for k, v in e.pairs:
                 walk_expr(k)
                 walk_expr(v)
+        elif isinstance(e, N.RecordLit):
+            for _fn, fv in e.fields:
+                walk_expr(fv)
         elif isinstance(e, N.Builtin):
             for a in e.args:
                 walk_expr(a)
