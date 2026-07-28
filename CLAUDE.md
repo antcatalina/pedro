@@ -77,7 +77,14 @@ python tools/differential.py -v
    authoring loop (codes, hints, `got X, expected Y`).
 6. **Update the docs.** Any change must be reflected in `README.md`, `WORKLOG.md`,
    `docs/language-card.md` (and this file if conventions change). Append a dated
-   `WORKLOG.md` entry describing what you did and what is next.
+   `WORKLOG.md` entry describing what you did and what is next. This rule was
+   already here once and still got violated — `docs/language-card.md` told the
+   authoring LLM that lists/maps/`for each` were unsupported for weeks after
+   they shipped, because only some of the four docs got touched. Don't trust
+   yourself to remember this by prose alone: if `tools/check_docs.py` exists
+   (see WORKLOG's 2026-07-28 roadmap addendum), run it before you finish and
+   fix anything it flags; if it doesn't exist yet, grep the other three docs
+   for the construct you just added/changed before you consider the task done.
 
 ## Branch & workflow
 

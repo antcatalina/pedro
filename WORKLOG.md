@@ -5,6 +5,105 @@ resume cleanly across sessions.
 
 ---
 
+## 2026-07-28 — README + language-card accuracy pass (docs only, no compiler changes)
+
+Audited README.md and docs/language-card.md against the actual parser/codegen
+(not against WORKLOG's own summaries, to catch drift in the summaries too) —
+several claims in both had gone stale as the compiler grew around them.
+
+**Confirmed unimplemented but presented as working (README):** `record`/`enum`
+declarations and construction, `use capability …` (all verbs), `module:`
+directive, `use "file.pedro"` imports, the `raw <lang>: … end raw` escape
+hatch, loop `stop`/`skip` (no break/continue exists at all — zero matches for
+break/continue/stop/skip anywhere in parser.py, nodes.py, codegen_python.py),
+keyed/descending `sort` (parser only accepts a single bare expression — the
+"`sort users by created_at descending`" example was never valid syntax), and
+three of the five "known predicates" (`is a valid email`, `is a valid url`,
+`is even`, `is odd` — only `is empty`/`is present`/`is nothing`/`is divisible
+by` actually parse). Also fixed the generated-file banner shown in the README
+contract to match the real one verbatim (`# Generated from {file} by pedroc
+v0.1 (target: {target}). Do not edit by hand.` — was previously shown with a
+capital "Pedro", an em-dash, and an embedded version number that codegen
+doesn't actually emit).
+
+**docs/language-card.md was worse** — its "NOT yet supported" list said
+lists, maps, `for each`, and string methods weren't supported, when they've
+been implemented since the 2026-07-25 session and are exercised throughout
+the cookbook corpus. Since this file is the actual in-context spec the
+authoring skill (`skills/write-pedro/`) injects into the model's prompt, this
+was actively steering the authoring LLM away from constructs that work fine,
+and toward unnecessary `todo` holes.
+
+**Fix approach:** rather than deleting the aspirational content (it's good
+design work and documents real roadmap intent), tagged every not-yet-compiled
+construct inline with 🧭 in both docs, moved the record+TypeScript worked
+example in the README under an explicit "the full vision" heading with an
+up-front disclaimer instead of a caveat buried after the fact, and swapped the
+README's primary worked example for `examples/cookbook/recover.pedro`
+(try/on-failure) with real `pedroc build` output pasted in verbatim — verified
+by actually compiling it, not hand-written.
+
+Also added a "Built for agent-heavy teams" pitch section (determinism as a
+safety property across many agent runs, the check-loop as a machine-readable
+oracle, typed holes vs. hallucination, sandboxed execution, the planned
+capability manifest as an agent-governance primitive) and a "Where Pedro could
+go next" subsection naming four concrete, not-yet-committed feature bets
+aimed specifically at agent-driven workflows: a capability-manifest → agent
+permission bridge, property-based `expect` blocks, tamper-evident generated
+output (content-hash drift detection via a new `pedroc verify`), and promoting
+`tools/differential.py`'s cross-target agreement check into a first-class
+`pedroc check --targets` CLI guarantee. None of these are built — flagged for
+discussion, not implied as done.
+
+No compiler code changed; `python tools/regress.py` unaffected (still green).
+
+**Decision (same day):** all four "where Pedro could go next" bets are
+approved — see the roadmap addendum immediately below. They're now real,
+prioritized work, queued on AntMac alongside two new jobs that address a
+second problem this session surfaced: docs drift itself. `docs/language-card.md`
+telling the authoring LLM that lists/maps/`for each` were unsupported (when
+they'd worked since 2026-07-25) wasn't a one-off slip — CLAUDE.md ground rule
+6 already says to update README/WORKLOG/language-card together, and it still
+didn't happen, so the fix is mechanical enforcement, not another reminder.
+
+## Roadmap addendum (2026-07-28) — 4 agent-native feature bets + doc-alignment tooling
+
+Added to the AntMac queue (`~/jobs/pedro/queue.json`) in this priority order,
+positioned by dependency:
+
+1. **`capability-permission-bridge`** — depends on capabilities-and-adapters.
+   `pedroc permissions <file>.pedro` derives an agent-harness permission
+   manifest (starting with a Claude Code `settings.json`-shaped block) from a
+   program's declared capability surface — never hand-maintained, always
+   regenerated from source.
+2. **`cross-target-check-cli`** — depends on the TypeScript backend +
+   `tools/differential.py`. Promotes the differential tester from a dev-only
+   test tool into `pedroc check <file>.pedro --targets python,typescript`, a
+   guarantee any user's own code can assert, not just the corpus.
+3. **`property-based-expect`** — extends `expect:` with a bounded quantified
+   form (`for all n from a to b: <predicate>`), enumerated and checked (not a
+   theorem prover), as a strict superset of today's example-based syntax.
+4. **`verify-drift-detection`** — embeds a source content-hash in the
+   generated-file banner and adds `pedroc verify <file>.pedro <output>` to
+   detect stale-vs-hand-edited generated code.
+5. **`docs-alignment-audit`** (recurring) — periodically re-runs the exact
+   cross-reference this session did by hand (README/WORKLOG/CLAUDE.md/
+   language-card.md claims vs. actual parser/codegen behavior) and fixes
+   drift as it's found, instead of waiting for a human to notice.
+6. **`docs-consistency-checker`** — builds `tools/check_docs.py`: greps
+   pedroc's own source for the keyword/construct surface it actually
+   implements and cross-references that against docs/language-card.md's "NOT
+   yet supported" list and README's 🧭 tags, wired into `tools/regress.py` so
+   a construct that ships without its doc catch-up gets flagged mechanically
+   — the same "verify by running" principle Pedro applies to programs,
+   applied to its own docs.
+
+See `~/jobs/pedro/queue.json` on AntMac for the full prompts (they're
+self-contained — an agent picking one of these up doesn't need this WORKLOG
+entry, just the job prompt and the current repo state).
+
+---
+
 ## 2026-07-27 — Differential tester + grammar fuzzer (roadmap #7, Python lane)
 
 Built the cross-backend correctness harness. It is designed for two backends but

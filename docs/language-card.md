@@ -53,20 +53,24 @@ expect:
 
 ## Types (supported)
 
-`text` · `whole` (integer) · `number` (decimal) · `flag` (true/false)
+`text` · `whole` (integer) · `number` (decimal) · `flag` (true/false) · `nothing`
+`list of <T>` · `map of <K> to <V>` · `optional <T>` (or `<T>?`)
 
 ## Statements
 
 - `let x = <expr>` (declare) · `x = <expr>` or `set x to <expr>` (reassign)
 - `increase x by <expr>` · `decrease x by <expr>`
+- `add <value> to <list>` · `swap items at <i> and <j> in <list>`
 - `return <expr>` · `return`
 - `when <cond>:` / `when <cond>:` / `otherwise:`  — first true branch wins
+- `for each <item> in <list>:` · `for each <index>, <item> in <list>:` (0-based index)
+- `while <cond>:` · `repeat <expr> times:` (no `break`/`continue` yet — no
+  `stop`/`skip` keywords; structure the loop instead, e.g. `find one … where …`)
 - `match <expr>:` with `case <value>:` arms and a final `case otherwise:` —
   the subject is compared by equality against each case; `otherwise` is the
   default (and must be last)
 - `try:` / `on failure as <err>:` — run the body; if a `fail with` fires,
   recover in the handler with `<err>` bound to the failure message (a `text`)
-- `while <cond>:` · `repeat <expr> times:`
 - `fail with <expr>`  — raise a recoverable failure with a message
 - `todo "<message>"`  — an unresolved hole
 
@@ -75,16 +79,31 @@ expect:
 - arithmetic: `+ - * /`, `mod` (remainder), `div` (whole-number division)
 - compare: `is`, `is not`, `is greater than`, `is less than`, `is at least`,
   `is at most`  (symbols `== != < > <= >=` also work)
-- `<a> is divisible by <b>`
+- `<a> is divisible by <b>` · `<x> is present` / `is empty` / `is nothing`
+- membership: `x in items` · `x not in items`
 - logic: `and`, `or`, `not`
-- literals: `42`, `3.14`, `true`, `false`, `"text with {interpolation}"`
+- string concat: `a followed by b`
+- convert: `value as text` / `as whole` / `as number`
+- literals: `42`, `3.14`, `true`, `false`, `"text with {interpolation}"`,
+  `[1, 2, 3]` (list), `{ key: value }` (map), `nothing`
+- collection ops: `count of x` · `item at i in x` · `first of x` · `last of x` ·
+  `copy of x` · `characters of x` · `take n from x` · `drop n from x` ·
+  `split x by sep` · `sort x` (ascending only — no `by <key>`/`descending` yet) ·
+  `numbers from a to b` (inclusive range) · `empty map of <K> to <V>` ·
+  `filter v in x where <cond>` · `collect <expr> for each v in x [where <cond>]` ·
+  `sum of <expr> for each v in x [where <cond>]` · `find one v in x where <cond>`
+  (first match or `nothing`)
 - calls: `factorial(n - 1)` — recursion is fine
 
 ## NOT yet supported — do not use until the compiler catches up
 
-lists, maps, records, enums, `for each`, string methods, capabilities/effects.
-If the task needs these: write the task signature and an `expect:` block, and
-put a `todo "<what's needed>"` in the body. Ship the hole, don't fake it.
+`record`/`enum` declarations (so `match` compares plain values, not enum
+variants), capabilities/effects (`use capability …` and its verbs), modules
+(`use "file.pedro"`), the `raw <lang>: … end raw` escape hatch, loop
+`stop`/`skip`, keyed/descending `sort`, and the predicates `is a valid email` /
+`is a valid url` / `is even` / `is odd`. If the task needs one of these: write
+the task signature and an `expect:` block, and put a `todo "<what's needed>"`
+in the body. Ship the hole, don't fake it.
 
 ## Canonical example
 
