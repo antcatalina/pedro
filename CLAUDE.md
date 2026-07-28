@@ -21,7 +21,7 @@ structured feedback — so the language must stay small, regular, and verifiable
 ## Where things are
 
 - `pedroc/` — the compiler: `lexer.py`, `parser.py`, `nodes.py` (AST),
-  `codegen_python.py`, `check.py` (the oracle), `_expect_runner.py` (the sandboxed
+  `codegen_python.py`, `codegen_ts.py` (the TypeScript backend), `check.py` (the oracle), `_expect_runner.py` (the sandboxed
   subprocess that runs `expect` blocks), `resolve.py` (name-resolution
   pass → `undefined-name`/`unknown-task`), `suggest.py` (deterministic
   edit-distance "did you mean X?"), `errors.py`, `__main__.py` (CLI),
@@ -124,7 +124,10 @@ maps, `let`/reassign, `increase`/`decrease`, `when`/`otherwise`, `while`, `repea
 `followed by`, the collection operations (`count of`, `item at`, `filter`, `sum of`,
 `numbers from`, …), string interpolation, `fail with`, `match`/`case` (+ `case
 otherwise`), `try`/`on failure as err`, typed holes (`todo`), and `expect` with
-`given`/`fails with`. **Target:** Python. **Diagnostics:** `line:col`, stable
+`given`/`fails with`. **Targets:** Python **and TypeScript** (`--target typescript`
+→ runnable `.ts`; `node` v24+ strips types, so no build step). Every corpus program
+runs green on both, and `tools/differential.py` asserts the two backends agree.
+**Diagnostics:** `line:col`, stable
 `code`s + actionable `hint`s, source `snippet` with `^` caret, nearest-match
 `suggestion` ("did you mean X?") for unknown identifiers/tasks/keywords, and a
 reserved `capabilities` surface; `check --json` is compact (null fields omitted).
@@ -133,7 +136,7 @@ timeout + restricted env, `pedroc/_expect_runner.py`), reporting a non-terminati
 or crashing program as `status:"timeout"`/`"error"` instead of hanging.
 
 **Designed but NOT yet in the compiler** (see `WORKLOG.md` roadmap, highest first):
-TypeScript backend (fully designed, in progress on `agent/dev`), `record`/`enum`
-(so `match` currently switches over plain values, not enum variants),
-capabilities/effects + adapter layer. The `WORKLOG.md` roadmap section is the
-source of truth for what to build next.
+`record`/`enum` (so `match` currently switches over plain values, not enum
+variants), capabilities/effects + adapter layer. The `WORKLOG.md` roadmap section
+is the source of truth for what to build next. (The TypeScript backend has
+**landed** — `pedroc/codegen_ts.py`.)

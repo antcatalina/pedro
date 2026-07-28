@@ -186,7 +186,7 @@ class Parser:
                 self._expect("OP", "=")
                 value = self._parse_expr()
                 self._expect("NEWLINE")
-                return N.Assign(name=name, value=value)
+                return N.Assign(name=name, value=value, is_decl=True)
             if kw == "set":
                 self._advance()
                 name = self._expect("NAME")[1]
@@ -458,7 +458,7 @@ class Parser:
             elif self._is_name("followed"):
                 self._advance()
                 self._expect("NAME", "by")
-                left = N.BinOp(op="+", left=left, right=self._parse_mul())
+                left = N.BinOp(op="followed_by", left=left, right=self._parse_mul())
             else:
                 return left
 

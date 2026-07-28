@@ -60,6 +60,28 @@ def main(argv=None):
                     print(f"        FAIL {x['text']}  ({x['detail']})")
     print(f"\n{'PASS' if all_ok else 'FAIL'}: {total_expectations} expectations checked across the corpus")
 
+    # TypeScript lane: automatically runs when `node` is on PATH. Compiles every
+    # corpus program to TypeScript and executes it with node, asserting each
+    # program prints its success line — the same green bar the Python lane holds.
+    from tools.backends import run_typescript, ts_available
+    print()
+    if ts_available():
+        ts_ok = 0
+        for path in corpus():
+            with open(path, "r", encoding="utf-8") as f:
+                res = run_typescript(f.read(), filename=os.path.basename(path))
+            name = os.path.relpath(path, ROOT)
+            if res["ran"] and res["ok"]:
+                ts_ok += 1
+                print(f"[ts  ] {name} — ran green on node")
+            else:
+                all_ok = False
+                print(f"[FAIL] {name} — typescript lane: {res.get('error')}")
+        print(f"\n{'PASS' if ts_ok == len(corpus()) else 'FAIL'}: "
+              f"{ts_ok}/{len(corpus())} corpus programs green on the TypeScript backend")
+    else:
+        print("SKIP: TypeScript lane (node not on PATH)")
+
     # Also run the structured-diagnostics tests (pytest not required).
     from tests.test_diagnostics import _run as run_diag_tests
     print()

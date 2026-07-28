@@ -37,12 +37,14 @@ check it:
      `status` key.
    - The JSON is COMPACT: null/empty fields are omitted, so an absent key means
      null (e.g. no `suggestion` key = no suggestion).
-5. Loop until `ok: true`, then `python -m pedroc build <file>.pedro -o out.py`.
+5. Loop until `ok: true`, then `python -m pedroc build <file>.pedro -o out.py`
+   (or `--target typescript -o out.ts` — the same source compiles to Python and
+   TypeScript, and both are verified to agree).
 
 ## Program shape
 
 ```pedro
-target: python                       # required first line
+target: python                       # required first line (or `target: typescript`)
 
 task <name>(<p>: <type>, ...) returns <type>:
     <statements>

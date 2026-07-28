@@ -2,7 +2,7 @@
 
 **The goal: the easiest language to pick up for LLM-driven development.** Small enough to fit in a single prompt, precise enough for a real compiler to check your work against. Claude writes Pedro from your plain-English request; a real, deterministic compiler (`pedroc`) — **not an LLM** — turns it into the programming language of your choice.
 
-> **Status:** v0.1. `pedroc` deterministically compiles a real, growing subset of the language — scalars, lists, maps, control flow (including `match`/`case` and `try`/`on failure`), recursion, and the collection operations — to **Python**, verified by running the entire [cookbook](docs/cookbook.md) (22 algorithms). `record`/`enum` types, capabilities/effects, modules, and a second target (TypeScript) are fully designed and next up — see [WORKLOG.md](WORKLOG.md) for exactly what's real today vs. still ahead. This README marks every not-yet-compiled construct with 🧭.
+> **Status:** v0.1. `pedroc` deterministically compiles a real, growing subset of the language — scalars, lists, maps, control flow (including `match`/`case` and `try`/`on failure`), recursion, and the collection operations — to **both Python and TypeScript**, verified by running the entire [cookbook](docs/cookbook.md) (22 algorithms) on *each* backend and asserting they agree. `record`/`enum` types, capabilities/effects, and modules are fully designed and next up — see [WORKLOG.md](WORKLOG.md) for exactly what's real today vs. still ahead. This README marks every not-yet-compiled construct with 🧭.
 
 Pedro is the **verifiable intermediate language between natural-language intent and executable code.** You (or Claude) write clear, keyworded pseudocode and tag a target (`target: python`); `pedroc` compiles it to idiomatic code. The design splits one job into two:
 
@@ -13,7 +13,7 @@ Putting the LLM where fuzziness is a feature and a real compiler where correctne
 
 ```
    plain English  ─▶  Claude   ─▶  your_app.pedro  ─▶  pedroc   ─▶  your_app.py
-   (what you want)   (authoring)   (verifiable IR)    (compiler)   (today: Python; 🧭 more targets next)
+   (what you want)   (authoring)   (verifiable IR)    (compiler)   (Python & TypeScript; 🧭 more next)
                                           │
                                      expect blocks ─▶ run ─▶ pass / fail  (self-correction)
 ```
@@ -22,7 +22,7 @@ Putting the LLM where fuzziness is a feature and a real compiler where correctne
 
 ## Why Pedro?
 
-- **Write intent once, target any language.** The same `.pedro` source compiles to Python today; the AST is target-agnostic on purpose, so adding TypeScript (🧭 next up) is a new codegen module, not a rewrite.
+- **Write intent once, target any language.** The same `.pedro` source compiles to **Python and TypeScript** today; the AST is target-agnostic on purpose, so each backend is just a codegen module, not a rewrite — and the [differential tester](tools/differential.py) runs the whole corpus on both and asserts they agree.
 - **Readable by humans and Claude alike.** A non-programmer can follow a Pedro file; Claude can read, write, and extend it — `pedroc` is what actually compiles it. Both read the same source of truth.
 - **Reproducible, reviewable, versionable.** A `.pedro` file is a stable artifact you can diff, review, and re-compile — unlike a one-off prompt. The same source always produces byte-identical output.
 - **Leans on Claude's strengths.** Instead of forcing a rigid grammar the model must never trip on, Pedro gives Claude clear structure and an explicit contract, and lets it do what it's good at: turning clear intent into idiomatic code.
@@ -191,7 +191,7 @@ def order_total(items: list[LineItem], discount_percent: float) -> float:
     return subtotal - discount
 ```
 
-And once a TypeScript backend lands (🧭), the *same source* is intended to also compile to:
+The **TypeScript backend is real** (`target: typescript` compiles and runs on `node`) — but this *particular* example still uses `record` types, which aren't parsed yet (🧭), so it's shown here as intended output. Once records land, the same source is meant to compile to:
 
 ```typescript
 // Generated from order_total.pedro by pedroc v0.1 (target: typescript). Do not edit by hand.
@@ -201,20 +201,20 @@ interface LineItem {
   quantity: number;
 }
 
-function orderTotal(items: LineItem[], discountPercent: number): number {
+function order_total(items: LineItem[], discount_percent: number): number {
   let subtotal = 0;
   for (const item of items) {
     subtotal += item.price * item.quantity;
   }
   if (subtotal > 100) {
-    discountPercent += 5;
+    discount_percent += 5;
   }
-  const discount = (subtotal * discountPercent) / 100;
+  const discount = (subtotal * discount_percent) / 100;
   return subtotal - discount;
 }
 ```
 
-Note the intended identifier convention conversion (`orderTotal`, `discountPercent`) while preserving meaning — that behavior already works for every construct `pedroc` does compile today.
+`pedroc` preserves your identifiers verbatim across targets (no case conversion) — the same names appear in the Python and TypeScript output, so a Pedro file reads the same whichever backend you compile it to. For a construct that compiles **today**, build any cookbook example with `--target typescript` and run it with `node` to see the real output.
 
 ---
 
@@ -226,7 +226,7 @@ Sections below are the **full language design**. Anything not yet in the compile
 
 Every program starts with directives (before the first declaration):
 
-- `target: <language> [version]` — **required; implemented.** e.g. `target: python 3.11`, `target: python`. (Only `python` is a real target today; the version suffix parses but has no effect on output yet.) 🧭 `target: typescript` and other languages.
+- `target: <language> [version]` — **required; implemented.** e.g. `target: python 3.11`, `target: python`, `target: typescript`. **Both `python` and `typescript` are real targets today** (`pedroc build file.pedro --target typescript` → runnable `.ts`); the version suffix parses but has no effect on output yet. 🧭 other languages.
 - `module: <name>` 🧭 — optional module name. Not yet parsed.
 - `use "<file>.pedro"` / `use <name> from "<file>.pedro"` 🧭 — imports. Not yet parsed.
 - `use capability …` 🧭 — capability declarations (see below). Not yet parsed.
@@ -239,15 +239,15 @@ Every program starts with directives (before the first declaration):
 
 ### Primitive types — implemented
 
-| Pedro     | Meaning              | Python  |
-|-----------|----------------------|---------|
-| `text`    | string               | `str`   |
-| `whole`   | integer              | `int`   |
-| `number`  | real / decimal       | `float` |
-| `flag`    | true / false         | `bool`  |
-| `nothing` | absence of a value   | `None`  |
+| Pedro     | Meaning              | Python  | TypeScript |
+|-----------|----------------------|---------|------------|
+| `text`    | string               | `str`   | `string`   |
+| `whole`   | integer              | `int`   | `number`   |
+| `number`  | real / decimal       | `float` | `number`   |
+| `flag`    | true / false         | `bool`  | `boolean`  |
+| `nothing` | absence of a value   | `None`  | `void`     |
 
-(The `TypeScript` column above is the intended 🧭 mapping once that backend lands: `string`, `number`, `number`, `boolean`, `null`.)
+Composite types map too: `list of T` → `T[]`, `map of K to V` → `Record<K, V>`, `optional T` → `T | null`. (JS has no value-equality or floor-division built in, so the TypeScript backend emits a tiny runtime preamble of `__eq`/`__in`/`__sort`/`__concat`/… helpers to keep `==`, membership, `sort`, and `followed by` value-correct.)
 
 ### Composite types
 
@@ -517,13 +517,17 @@ This is the part that makes Pedro reliable. When a `.pedro` file is compiled, th
 # compile Pedro to Python
 PYTHONPATH=. python -m pedroc build examples/cookbook/numbers.pedro -o build/numbers.py
 
+# ...or to TypeScript, and run it straight away (Node v24+ strips types — no build step)
+PYTHONPATH=. python -m pedroc build examples/cookbook/numbers.pedro -o build/numbers.ts --target typescript
+node build/numbers.ts
+
 # check it: compile, run its expect blocks, report per-assertion pass/fail
 PYTHONPATH=. python -m pedroc check examples/cookbook/numbers.pedro --json
 ```
 
 `check` is the oracle for the authoring loop: emit Pedro → `check` → read the JSON (`errors`, `holes`, and failing `expectations` with `got X, expected Y`) → fix. Diagnostics are built to be *read by a model*: each error carries a stable `code`, `line` **and `col`**, an actionable `hint`, a source `snippet` with a `^` caret, and — for a misspelled identifier, task, or keyword — a nearest-match `suggestion` ("did you mean X?"). The JSON is compact (null fields omitted). The generated program is run in a **sandboxed subprocess** with a wall-clock timeout and a restricted environment, so a non-terminating or hostile program is reported as a structured `status:"timeout"`/`"error"` instead of hanging or compromising the compiler. The **authoring layer** — turning a plain-English request into Pedro and driving that loop — is the Claude Code skill in `skills/write-pedro/`; the compact spec it reads is [docs/language-card.md](docs/language-card.md).
 
-**Coverage today:** the whole cookbook (scalars, lists, maps, control flow — including `match`/`case` and `try`/`on failure as err` — recursion, and the collection operations), targeting Python only. Every 🧭 in this README is not yet in the compiler — [WORKLOG.md](WORKLOG.md) has the live, prioritized list of what's next.
+**Coverage today:** the whole cookbook (scalars, lists, maps, control flow — including `match`/`case` and `try`/`on failure as err` — recursion, and the collection operations), targeting **Python and TypeScript** — every corpus program runs green on both, and the differential tester asserts the two backends agree expectation-for-expectation. Every 🧭 in this README is not yet in the compiler — [WORKLOG.md](WORKLOG.md) has the live, prioritized list of what's next.
 
 ---
 
@@ -534,7 +538,7 @@ pedro/
 ├── README.md              # overview + language guide
 ├── CLAUDE.md               # standing guidance for Claude / automated agents
 ├── WORKLOG.md              # dated change log + next steps
-├── pedroc/                 # the real compiler: lexer, parser, codegen, check, CLI
+├── pedroc/                 # the real compiler: lexer, parser, codegen_python + codegen_ts, check, CLI
 ├── docs/
 │   ├── design-for-llms.md  # why Pedro is shaped this way (the strategy)
 │   ├── language-card.md    # compact in-context spec for the authoring LLM
@@ -554,10 +558,10 @@ pedro/
 ```
 
 The correctness harness is kept off the default fast path: `python tools/regress.py`
-runs a tiny fuzz smoke, while `--fuzz`, `--diff`, and `--slow` run the full sweeps.
-The differential lane compares backends against each other, so it only bites once a
-second backend (TypeScript) lands; today it confirms the Python lane and reports the
-TS lane as pending.
+runs both backends over the corpus plus a tiny fuzz smoke, while `--fuzz`, `--diff`,
+and `--slow` run the full sweeps. The differential lane compares backends against
+each other; now that the TypeScript backend has landed, it runs a live cross-backend
+diff (the TS corpus lane runs automatically whenever `node` is on PATH).
 
 ## Working on Pedro (humans and agents)
 
@@ -567,8 +571,8 @@ Repo-specific conventions and guardrails for anyone — or any Claude agent — 
 
 Live status and next steps live in [WORKLOG.md](WORKLOG.md). In brief:
 
-- **Done** — the language design; a real deterministic compiler (`pedroc`) for the scalar/list/map/control-flow subset → Python; the `pedroc check` loop, typed holes, and structured diagnostics, sandboxed in a subprocess; the [cookbook](docs/cookbook.md) (22 algorithms) as a passing regression suite (`tools/regress.py`); a differential tester + seedable grammar fuzzer (`tools/differential.py`, `tools/fuzz.py`).
-- **Next (highest priority first)** — a TypeScript backend (flips the differential/fuzz TS lanes from pending to live); `record`/`enum` types; capabilities + the adapter layer (unlocks "auditable by construction"); then `docs/SPEC.md`.
+- **Done** — the language design; a real deterministic compiler (`pedroc`) for the scalar/list/map/control-flow subset → **Python and TypeScript**; the `pedroc check` loop, typed holes, and structured diagnostics, sandboxed in a subprocess; the [cookbook](docs/cookbook.md) (22 algorithms) as a passing regression suite (`tools/regress.py`) on both backends; a differential tester + seedable grammar fuzzer running live over both backends (`tools/differential.py`, `tools/fuzz.py`).
+- **Next (highest priority first)** — `record`/`enum` types; capabilities + the adapter layer (unlocks "auditable by construction"); promoting the differential check into a `pedroc check --targets` guarantee; then `docs/SPEC.md`.
 
 ### Committed: bets that make Pedro distinctly agent-native 🧭
 

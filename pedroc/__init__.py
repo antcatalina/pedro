@@ -5,14 +5,15 @@ No LLM involved; the same input always yields the same output.
 """
 from .lexer import tokenize
 from .parser import Parser
-from .codegen_python import generate
+from .codegen_python import generate as generate_python
+from .codegen_ts import generate as generate_ts
 from .errors import PedroSyntaxError
 
 __all__ = ["compile_source", "PedroSyntaxError"]
 
 __version__ = "0.1"
 
-_TARGETS = {"python": generate}
+_TARGETS = {"python": generate_python, "typescript": generate_ts}
 
 
 def compile_source(source, filename="<pedro>", target="python"):
@@ -20,4 +21,5 @@ def compile_source(source, filename="<pedro>", target="python"):
         raise ValueError(f"unsupported target {target!r}; available: {sorted(_TARGETS)}")
     tokens = tokenize(source)
     program = Parser(tokens, filename).parse()
+    program.target = target
     return _TARGETS[target](program, filename)

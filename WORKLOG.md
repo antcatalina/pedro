@@ -5,6 +5,73 @@ resume cleanly across sessions.
 
 ---
 
+## 2026-07-28 — TypeScript backend LANDED (roadmap #1)
+
+Pedro now compiles to **TypeScript as well as Python** from the same AST — the
+"one source, many verified targets" promise is real, not aspirational. Every
+corpus program (22 cookbook algorithms across 7 files + `examples/math.pedro`)
+builds with `--target typescript` and runs green on `node` (v26 here; v24+ strips
+types, so `.ts` runs with no build step), and `tools/differential.py` now runs a
+**live cross-backend diff**: it asserts Python and TypeScript agree expectation-
+for-expectation on the whole corpus, and the fuzzer runs both backends too.
+
+**Refactor first (so `followed by` and `let` retarget cleanly):**
+- `parser.py`: `let x = …` now sets `Assign(is_decl=True)` (JS needs `let x` for a
+  fresh binding vs. bare `x =` for reassignment; Python ignores the flag). `set`
+  keeps `is_decl=False`.
+- `parser.py`: `followed by` now emits `BinOp("followed_by", …)` instead of `"+"`
+  — list-concat differs from `+` in JS (`[1]+[2]` is `"12"` there).
+- `codegen_python.py`: added `"followed_by": "+"` to `BINOP_MAP` so Python still
+  concatenates. Python lane stayed green (57 expectations) through the refactor.
+
+**New `pedroc/codegen_ts.py`** — `generate(program, filename)` → TypeScript, using
+only *erasable* type syntax so `node` can run it directly. Types: text→`string`,
+whole/number→`number`, flag→`boolean`, nothing→`void`, `list of T`→`T[]`,
+`map of K to V`→`Record<K,V>`, `optional T`→`T | null`. A fixed runtime preamble
+of `__`-helpers bridges the Python→JS semantic gaps:
+- `__eq` — **deep value equality** (JS `===` is reference-equal for arrays/objects,
+  so without this every array expectation would fail).
+- `__in` (arrays/strings `.includes`, objects `in`), `__len`, `__range` (inclusive),
+  `__sort` (numeric+string-safe comparator, since JS default sort is lexicographic),
+  `__concat` (arrays `.concat`, strings `+`), `__last`, `__whole` (`Math.trunc`).
+- `class PedroError extends Error {}` is emitted only when `fail`/`try`/`fails` use it.
+
+Per-node bridges: `==`→`__eq`, `!=`→`!__eq`, `div`→`Math.floor(a/b)`, `mod`/`%`→`%`,
+`followed_by`→`__concat`, `in`/`not in`→`__in`/`!__in`, `is`/`is not`→`===`/`!==`
+with `None`→`null`, `and`/`or`→`&&`/`||`; `add`→`.push`, `swap`→array destructuring,
+`fail with`→`throw new PedroError()`, string interpolation→template literals,
+comprehensions→`.filter`/`.map`/`.reduce`/`.find`, `for each (+index)`→`for..of` /
+`.entries()`, `repeat n`→a counted `for`-loop. Map literals use computed keys
+(`{[k]: v}`) so any key expression works. The `expect` block becomes a top-level
+IIFE that runs the checks and prints the file's success line ending in ✓.
+
+**Wired up:** `pedroc/__init__.py` registers `"typescript"` in `_TARGETS` and sets
+`program.target = target` in `compile_source` so the generated banner matches the
+chosen backend. Output is deterministic (byte-identical recompiles verified).
+
+**Regression:** `tools/regress.py` gained a TS corpus lane that runs automatically
+whenever `node` is on PATH (skips cleanly otherwise, never a CI fail). `backends.py`
+already had a `run_typescript` runner + `ts_available()` probe waiting for this — it
+lights up now, so `differential.py`/`fuzz.py` cover both backends with no changes.
+`python tools/regress.py` → Python 57 expectations + **8/8 corpus programs green on
+TS** + 12 diagnostic + 5 sandbox + 12-program fuzz over both backends, exit 0.
+`--slow` (200-program fuzz + full differential over python+typescript) also green.
+
+**Known gap (noted, not blocking):** the TS backend maps `let x` to a block-scoped
+JS `let`, so a variable first declared with `let` *inside* a branch and used after
+the branch would be out of scope in TS but in scope in Python (function scope). No
+corpus/fuzz program does this, so both lanes are green; if it ever bites, a small
+hoisting pass (declare all `let` names at task top) fixes it.
+
+Docs updated: README (retired the "TypeScript planned / not yet" caveats — it's real
+now; added a TS type column, a `--target typescript` run example, updated roadmap),
+`docs/language-card.md` (target line + build step), CLAUDE.md (coverage + layout).
+
+**Next (roadmap):** `record`/`enum` types (#2); capabilities + adapter layer (#3);
+promote the differential into a first-class `pedroc check --targets` guarantee.
+
+---
+
 ## 2026-07-28 — README + language-card accuracy pass (docs only, no compiler changes)
 
 Audited README.md and docs/language-card.md against the actual parser/codegen

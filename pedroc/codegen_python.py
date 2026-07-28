@@ -6,7 +6,7 @@ the parsed AST — deterministic and never wrong, at the cost of a few parens.
 from . import nodes as N
 
 TYPE_MAP = {"text": "str", "whole": "int", "number": "float", "flag": "bool", "nothing": "None"}
-BINOP_MAP = {"mod": "%", "div": "//"}
+BINOP_MAP = {"mod": "%", "div": "//", "followed_by": "+"}
 CONVERT_MAP = {"text": "str", "whole": "int", "number": "float"}
 
 _BUILTINS = {
