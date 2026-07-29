@@ -5,6 +5,50 @@ resume cleanly across sessions.
 
 ---
 
+## 2026-07-29 — Machine-independent CI on GitHub Actions (`regress-workflow`)
+
+Added `.github/workflows/regress.yml`: a second, independent verification path for
+the green/red signal that does **not** depend on AntMac at all. It runs on every
+push to `agent/dev`/`master` and on every pull_request; checks out the repo, sets up
+Python 3.11 and Node 24, and runs `PYTHONPATH=. python tools/regress.py`. A non-zero
+exit fails the GitHub check — no `continue-on-error`, no allowed failures.
+
+**Why.** Until now the *only* signal that a branch was green was this one Mac's local
+cron running `regress.py`. If the Mac is down, logged out (has happened for real), or
+misconfigured, nobody found out except by SSHing in and reading logs. GitHub Actions
+removes that single point of failure.
+
+**Authoritative signal, going forward.** The `regress` workflow is now the
+authoritative, machine-independent source of truth for whether a branch is green.
+**AntMac's cron is a convenience/build engine on top of it** (it also drives the
+agent queue), *not* the source of truth. Both run the identical command, so a pass in
+either means the same thing.
+
+**Mirrors CI exactly.** There is no separate `ci.sh` in this repo — the single
+canonical CI command (documented in `CLAUDE.md` and `README.md`) is
+`PYTHONPATH=. python tools/regress.py`. The workflow runs precisely that, so a green
+GitHub check means the same thing a green local run means. pedroc is zero-dependency
+(stdlib only), so the workflow installs nothing beyond the Python and Node runtimes;
+Node is present purely so the TS lane's `ts_available()` probe (`tools/backends.py`)
+lights up automatically (node v24+ strips TS types at runtime — no build step).
+
+**Docs.** Added a `regress` status badge to the top of `README.md` (points at the
+workflow, so the GitHub repo page shows green/red with no SSH), and a
+"CI is machine-independent" note in the tooling section.
+
+**Verification.** `regress.yml` is syntactically valid YAML (parsed clean by Ruby's
+`YAML.load_file`), and `python tools/regress.py` stays green locally (26/26
+diagnostics, 5/5 sandbox, corpus green on both backends, fuzz smoke 0 failures). Live
+GitHub Actions verification happens on the next real push from this branch — this
+sandbox can't trigger Actions, but the pipeline is correct by inspection and mirrors
+the local command exactly.
+
+**Next.** Nothing required. Once a push lands, confirm the badge renders and the first
+run is green; if GitHub's runner Python (3.11) ever diverges from local behavior,
+pin/adjust `python-version` here.
+
+---
+
 ## 2026-07-29 — Capability → agent-permission bridge LANDED (`capability-permission-bridge`)
 
 `pedroc permissions <file>.pedro [--format claude-settings|json]` turns a program's

@@ -1,5 +1,7 @@
 # Pedro
 
+[![regress](https://github.com/antcatalina/pedro/actions/workflows/regress.yml/badge.svg)](https://github.com/antcatalina/pedro/actions/workflows/regress.yml)
+
 **The goal: the easiest language to pick up for LLM-driven development.** Small enough to fit in a single prompt, precise enough for a real compiler to check your work against. Claude writes Pedro from your plain-English request; a real, deterministic compiler (`pedroc`) — **not an LLM** — turns it into the programming language of your choice.
 
 > **Status:** v0.1. `pedroc` deterministically compiles a real, growing subset of the language — scalars, lists, maps, `record`/`enum` types, control flow (including `match`/`case` and `try`/`on failure`), recursion, and the collection operations — to **both Python and TypeScript**, verified by running the entire [cookbook](docs/cookbook.md) on *each* backend and asserting they agree. Capabilities/effects and modules are fully designed and next up — see [WORKLOG.md](WORKLOG.md) for exactly what's real today vs. still ahead. This README marks every not-yet-compiled construct with 🧭.
@@ -616,7 +618,7 @@ pedro/
 │   └── signup.pedro        # uses capabilities   (compiles + passes check against mock adapters)
 ├── skills/write-pedro/     # the Claude Code authoring skill (NL -> Pedro)
 └── tools/
-    ├── regress.py           # compiles + checks the whole corpus (CI)
+    ├── regress.py           # compiles + checks the whole corpus (CI; run on GitHub Actions + AntMac cron)
     ├── backends.py           # per-backend "run + report expectations" adapter
     ├── differential.py       # runs each corpus program on every backend, asserts agreement
     └── fuzz.py               # seedable grammar fuzzer with a reference oracle
@@ -627,6 +629,12 @@ runs both backends over the corpus plus a tiny fuzz smoke, while `--fuzz`, `--di
 and `--slow` run the full sweeps. The differential lane compares backends against
 each other; now that the TypeScript backend has landed, it runs a live cross-backend
 diff (the TS corpus lane runs automatically whenever `node` is on PATH).
+
+**CI is machine-independent.** The [`regress` GitHub Actions workflow](.github/workflows/regress.yml)
+runs `PYTHONPATH=. python tools/regress.py` — the exact command below — on every push
+to `agent/dev`/`master` and on every PR, so the badge at the top of this README is the
+authoritative green/red signal. AntMac's cron runs the same command as a convenience and
+build engine on top of it, not the source of truth.
 
 ## Working on Pedro (humans and agents)
 
