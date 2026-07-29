@@ -49,7 +49,8 @@ structured feedback — so the language must stay small, regular, and verifiable
 - `tools/backends.py` — per-backend "run + report expectations" adapter (Python via
   `check`; TypeScript via `node`, gated by `ts_available()`).
 - `tools/differential.py` — runs each corpus program on every available backend and
-  asserts they agree (TS lane pending until the TS backend lands).
+  asserts they agree (live cross-backend diff; the TS lane runs whenever `node` is on
+  PATH — capability programs are Python-only until the TS adapter path lands).
 - `tools/fuzz.py` — seedable grammar fuzzer with a reference oracle; generates valid
   self-checking Pedro and asserts every backend agrees.
 - `docs/` — `design-for-llms.md`, `language-card.md`, `cookbook.md` (+ `SPEC.md`
@@ -58,8 +59,8 @@ structured feedback — so the language must stay small, regular, and verifiable
 ## How to run
 
 ```
-# compile Pedro to a target (python today)
-PYTHONPATH=. python -m pedroc build <file>.pedro -o out.py [--target python]
+# compile Pedro to a target (python or typescript)
+PYTHONPATH=. python -m pedroc build <file>.pedro -o out.py [--target python|typescript]
 
 # check: compile, run the expect block, report per-assertion pass/fail as JSON
 PYTHONPATH=. python -m pedroc check <file>.pedro --json

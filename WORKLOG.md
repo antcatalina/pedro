@@ -5,6 +5,49 @@ resume cleanly across sessions.
 
 ---
 
+## 2026-07-29 — Docs-accuracy audit (`docs-alignment-audit`, docs only)
+
+Recurring README/language-card/CLAUDE.md/WORKLOG-vs-actual-compiler cross-check.
+Derived the real keyword surface from `pedroc/parser.py` (`kw ==` / `_is_name`
+branches) and collection-op / capability-verb parsing, plus `codegen_python.py`
+/ `codegen_ts.py`, and diffed every doc claim against it — not against each other.
+Spot-checked by compiling the README's worked examples (`recover.pedro`,
+`order_total.pedro` Python **and** TypeScript, `signup.pedro` permissions) and
+diffing real output against what's shown.
+
+**Drift found and fixed (all stale-in-the-conservative-direction — real features
+described as not-yet, the exact bug this job guards against):**
+
+- `README.md` status blurb (line 7) still said "Capabilities/effects and modules
+  are fully designed and next up" — capabilities **landed** on the Python backend
+  weeks ago (the body + coverage section already say so). Now: capabilities
+  implemented; TS adapter path + modules are what's next.
+- `README.md` FAQ "Which languages can it target?" still said `pedroc` emits
+  **Python** today with "TypeScript is the next backend" — TS **landed**. Now
+  states both backends emit today with the differential tester asserting agreement.
+- `README.md` TS worked-output snippet showed `interface LineItem` immediately
+  after the banner, silently omitting the ~35-line `__eq`/`__in`/`__sort`/`__concat`
+  runtime preamble the real output emits (and which line 268 itself documents).
+  Added an explicit elision marker, matching the `# ...` precedent in the Python
+  `recover.py` snippet.
+- `CLAUDE.md` "Where things are": `tools/differential.py` note said the TS lane is
+  "pending until the TS backend lands" — it has landed and runs a live cross-backend
+  diff. Also fixed the build-command comment `(python today)` → `(python or
+  typescript)`.
+
+**Verified accurate, left unchanged:** `docs/language-card.md` (keyword surface,
+collection ops, capability verbs, "NOT yet supported" list all match the compiler);
+README's permissions mapping table vs. `pedroc/permissions.py` (exact); README
+coverage section (line 597); the "known predicates" / capability-verb 🧭 tags; the
+dated WORKLOG entries whose "TS PENDING" language was accurate *at their time* and
+correctly scoped to the still-pending TS capability-adapter path.
+
+No compiler behavior changed. `python tools/regress.py` green (no-op for this job).
+`tools/check_docs.py` still does not exist — that mechanical backstop is the separate
+`docs-consistency-checker` job, not yet built.
+
+---
+
 ## 2026-07-29 — Machine-independent CI on GitHub Actions (`regress-workflow`)
 
 Added `.github/workflows/regress.yml`: a second, independent verification path for

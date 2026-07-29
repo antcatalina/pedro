@@ -4,7 +4,7 @@
 
 **The goal: the easiest language to pick up for LLM-driven development.** Small enough to fit in a single prompt, precise enough for a real compiler to check your work against. Claude writes Pedro from your plain-English request; a real, deterministic compiler (`pedroc`) — **not an LLM** — turns it into the programming language of your choice.
 
-> **Status:** v0.1. `pedroc` deterministically compiles a real, growing subset of the language — scalars, lists, maps, `record`/`enum` types, control flow (including `match`/`case` and `try`/`on failure`), recursion, and the collection operations — to **both Python and TypeScript**, verified by running the entire [cookbook](docs/cookbook.md) on *each* backend and asserting they agree. Capabilities/effects and modules are fully designed and next up — see [WORKLOG.md](WORKLOG.md) for exactly what's real today vs. still ahead. This README marks every not-yet-compiled construct with 🧭.
+> **Status:** v0.1. `pedroc` deterministically compiles a real, growing subset of the language — scalars, lists, maps, `record`/`enum` types, control flow (including `match`/`case` and `try`/`on failure`), recursion, and the collection operations — to **both Python and TypeScript**, verified by running the entire [cookbook](docs/cookbook.md) on *each* backend and asserting they agree. **Capabilities/effects** are implemented on the Python backend (database/email/crypto verbs, enforced and surface-reported); the TypeScript adapter path and modules are designed and next up — see [WORKLOG.md](WORKLOG.md) for exactly what's real today vs. still ahead. This README marks every not-yet-compiled construct with 🧭.
 
 Pedro is the **verifiable intermediate language between natural-language intent and executable code.** You (or Claude) write clear, keyworded pseudocode and tag a target (`target: python`); `pedroc` compiles it to idiomatic code. The design splits one job into two:
 
@@ -211,6 +211,7 @@ def order_total(items: list[LineItem], discount_percent: float) -> float:
 
 ```typescript
 // Generated from order_total.pedro by pedroc v0.1 (target: typescript). Do not edit by hand.
+// ... __eq / __in / __sort / __concat runtime-helper preamble (see the note above) ...
 interface LineItem {
   name: string;
   price: number;
@@ -682,7 +683,7 @@ This same session found `docs/language-card.md` — the actual in-context spec f
 
 **Do I need to fine-tune Claude?** No. Pedro is taught entirely in-context via [docs/language-card.md](docs/language-card.md).
 
-**Which languages can it target?** `pedroc` emits **Python** today; TypeScript is the next backend (the AST is target-agnostic, so retargeting is a codegen module, not a rewrite). The design supports any language a backend is written for.
+**Which languages can it target?** `pedroc` emits **Python and TypeScript** today (the AST is target-agnostic, so each backend is just a codegen module, not a rewrite) — every corpus program runs green on both and the [differential tester](tools/differential.py) asserts they agree. The design supports any language a backend is written for.
 
 **Can Claude read Pedro as well as write it?** Yes — Pedro is designed to be equally clear to humans and to Claude, so you can also hand Claude a `.pedro` file and ask it to explain or extend the program.
 
