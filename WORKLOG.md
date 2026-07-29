@@ -5,6 +5,54 @@ resume cleanly across sessions.
 
 ---
 
+## 2026-07-29 — Capability → agent-permission bridge LANDED (`capability-permission-bridge`)
+
+`pedroc permissions <file>.pedro [--format claude-settings|json]` turns a program's
+declared capability surface into a ready-to-use permission manifest for an agent
+harness. This is the first of the four agent-native bets (roadmap addendum
+2026-07-28) to land, unblocked by capabilities-and-adapters shipping the day before.
+
+**What landed.**
+- **New `pedroc/permissions.py`** — a `CAPABILITY_RULES` mapping table + a pure
+  `permission_manifest(source)` (returns `(surface, rules)`) + `render(source, fmt)`.
+  The manifest is DERIVED from `check_capabilities(program)`'s declared surface, so
+  regenerating from the same source is **byte-identical** (same determinism guarantee
+  as codegen). A program that declares no capabilities emits an empty, no-op manifest.
+- **The mapping (simple + documented, a starting bridge not a policy engine):**
+  `http` → `WebFetch`, `Bash(curl:*)`, `Bash(wget:*)`; `database` → `Bash(psql:*)`;
+  `email` → `Bash(sendmail:*)`; `files` → `Read`, `Write`, `Edit`; `time`/`crypto`/
+  `random` → nothing (local-only, no external I/O to grant). Rules are deduped and
+  emitted in canonical capability order.
+- **Two formats.** `claude-settings` (default) → a `{"permissions":{"allow":[…]}}`
+  block droppable straight into a Claude Code config; `json` → an auditable breakdown
+  (`capabilities`, flat `allow`, and `byCapability` showing which cap justified what).
+- **CLI:** new `permissions` subcommand in `pedroc/__main__.py` (syntax/format errors
+  reported like `build`).
+
+**Proof (against `examples/signup.pedro`, which declares database + email + crypto).**
+The manifest is exactly `["Bash(psql:*)", "Bash(sendmail:*)"]` — `crypto` is local so
+grants nothing, and `http`/`files` (never declared) never appear. Five new tests in
+`tests/test_diagnostics.py` (26/26): grants-only-declared (asserts an UNDECLARED
+capability's rules never leak into the output), byte-identical regeneration, empty
+manifest for a pure program, the `json` derivation breakdown, and unknown-format
+rejection.
+
+**Docs.** README "Built for agent-heavy teams" replaces the 🧭 permission-bridge bet
+with a real description + the mapping table + the signup worked example; the committed-
+bets list marks it LANDED and the "Done" line includes it. `docs/language-card.md`
+notes the command in the capabilities section (flagged as downstream tooling — it does
+not change the authoring loop). CLAUDE.md layout + "How to run" updated.
+
+**Regression.** `python tools/regress.py` → 72 corpus expectations + 10/10 TS (2
+capability programs Python-only, skipped) + 26 diagnostic + 5 sandbox + 12-program
+fuzz, all green. Manifest verified byte-identical on regeneration.
+
+**Next (roadmap):** the remaining capability verbs + the TS adapter path; then the
+other three agent-native bets (`cross-target-check-cli`, `property-based-expect`,
+`verify-drift-detection`).
+
+---
+
 ## 2026-07-28 — Capabilities + the adapter layer LANDED (roadmap #3)
 
 Pedro's core differentiator — **auditable by construction** — is real now. A program

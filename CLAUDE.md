@@ -28,7 +28,9 @@ structured feedback — so the language must stay small, regular, and verifiable
   `missing-field`), `capabilities.py` (the capability/effect enforcement pass →
   declared surface + `undeclared-capability`/`unknown-capability`; adapter-name
   collision handling), `adapters.py` (in-memory reference adapters injected by
-  `check`), `suggest.py` (deterministic
+  `check`), `permissions.py` (the capability → agent-permission bridge: derives a
+  Claude Code `settings.json`-shaped manifest from the declared surface, behind
+  `pedroc permissions`), `suggest.py` (deterministic
   edit-distance "did you mean X?"), `errors.py`, `__main__.py` (CLI),
   `__init__.py` (`compile_source`). `pedro_capabilities.py` (repo root) re-exports
   the reference adapters so built examples run.
@@ -61,6 +63,10 @@ PYTHONPATH=. python -m pedroc build <file>.pedro -o out.py [--target python]
 
 # check: compile, run the expect block, report per-assertion pass/fail as JSON
 PYTHONPATH=. python -m pedroc check <file>.pedro --json
+
+# permissions: derive an agent-harness permission manifest from the declared
+# capability surface (Claude Code settings.json shape by default)
+PYTHONPATH=. python -m pedroc permissions <file>.pedro [--format claude-settings|json]
 
 # regression / CI (must stay green)
 python tools/regress.py

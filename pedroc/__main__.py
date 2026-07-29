@@ -2,6 +2,7 @@
 
     python -m pedroc build <file.pedro> [-o <out.py>] [--target python]
     python -m pedroc check <file.pedro> [--json] [--target python]
+    python -m pedroc permissions <file.pedro> [--format claude-settings|json]
 """
 import json
 import os
@@ -9,10 +10,12 @@ import sys
 
 from . import compile_source, PedroSyntaxError, PedroTypeError, PedroCapabilityError
 from .check import check
+from .permissions import render as render_permissions
 
 BUILD_USAGE = "usage: python -m pedroc build <file.pedro> [-o <out.py>] [--target python]"
 CHECK_USAGE = "usage: python -m pedroc check <file.pedro> [--json] [--target python]"
-USAGE = BUILD_USAGE + "\n" + CHECK_USAGE
+PERMS_USAGE = "usage: python -m pedroc permissions <file.pedro> [--format claude-settings|json]"
+USAGE = BUILD_USAGE + "\n" + CHECK_USAGE + "\n" + PERMS_USAGE
 
 
 def _read(path):
@@ -90,6 +93,38 @@ def _cmd_check(args):
     return 0 if report["ok"] else 1
 
 
+def _cmd_permissions(args):
+    if not args:
+        print(PERMS_USAGE, file=sys.stderr)
+        return 2
+    infile = args[0]
+    fmt = "claude-settings"
+    i = 1
+    while i < len(args):
+        if args[i] == "--format" and i + 1 < len(args):
+            fmt = args[i + 1]
+            i += 2
+        else:
+            print(f"unknown or incomplete argument: {args[i]}", file=sys.stderr)
+            return 2
+    try:
+        source = _read(infile)
+    except OSError as e:
+        print(f"error: {e}", file=sys.stderr)
+        return 1
+    try:
+        manifest = render_permissions(source, filename=os.path.basename(infile), fmt=fmt)
+    except (PedroSyntaxError, PedroTypeError, PedroCapabilityError) as e:
+        loc = f"{e.line}" if e.col is None else f"{e.line}:{e.col}"
+        print(f"{infile}:{loc}: error [{e.code}]: {e.message}", file=sys.stderr)
+        return 1
+    except ValueError as e:
+        print(f"error: {e}", file=sys.stderr)
+        return 2
+    print(manifest)
+    return 0
+
+
 def _print_human(report):
     print(f"{report['file']}: {report['summary']}")
     for err in report["errors"]:
@@ -122,6 +157,8 @@ def main(argv):
         return _cmd_build(argv[1:])
     if cmd == "check":
         return _cmd_check(argv[1:])
+    if cmd == "permissions":
+        return _cmd_permissions(argv[1:])
     print(USAGE, file=sys.stderr)
     return 2
 

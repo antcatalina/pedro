@@ -208,6 +208,12 @@ Capability calls compile through a swappable `pedro_capabilities` adapter module
 so `check` runs them against in-memory mocks (no real I/O). Verbs are reserved
 words in these positions — don't name a variable `hash`, `insert`, `send`, or `verify`.
 
+The declared surface also drives `python -m pedroc permissions <file>.pedro
+[--format claude-settings|json]`, which derives an agent-harness permission manifest
+(a Claude Code `settings.json` `permissions.allow` block by default) from exactly the
+capabilities the program declares — nothing more. This is downstream tooling; it does
+not change what you author.
+
 ## NOT yet supported — do not use until the compiler catches up
 
 These capability verbs are declared-but-not-yet-emitted: database `update`/`delete`,

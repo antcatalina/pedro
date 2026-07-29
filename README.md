@@ -36,6 +36,17 @@ If you're already driving most of your codebase through Claude Code, Cursor, or 
 - **Determinism is a safety property, not just tidiness.** Same source, same compiler version → byte-identical output, every time. When multiple agent runs (possibly days apart, possibly different sessions) touch the same `.pedro` file, you get the same code back — no drift, no "which run generated this."
 - **Sandboxed by default.** `check` runs generated code in an isolated subprocess with a wall-clock timeout, so an agent-authored infinite loop is reported as `status: "timeout"` instead of hanging your CI or your laptop.
 - **A capability surface you can read before you run anything.** Every effectful action — database, network, filesystem, email — has to be declared with `use capability`, and using an undeclared one is a compile error. `pedroc check --json` reports the program's entire declared capability surface as a `capabilities` field: the full blast radius of what an agent-authored program can *do*, visible before a single line executes. That's the kind of manifest an agent governance layer (or a human reviewing 50 agent-authored programs) actually wants.
+- **That surface compiles to a harness permission manifest.** `pedroc permissions <file>.pedro` derives a ready-to-use permission block from the declared capabilities — by default a Claude Code `settings.json`-shaped `permissions.allow` list you can drop straight into a config, or `--format json` for an auditable per-capability breakdown. The manifest is *derived, never hand-maintained*: regenerating it from the same source is byte-identical, and an **undeclared** capability can never appear in the output (a pure program emits an empty, no-op manifest). The mapping is deliberately small and documented — a starting bridge, not a policy engine:
+
+  | capability | grants (`allow` rules) |
+  |---|---|
+  | `http` | `WebFetch`, `Bash(curl:*)`, `Bash(wget:*)` |
+  | `database` | `Bash(psql:*)` |
+  | `email` | `Bash(sendmail:*)` |
+  | `files` | `Read`, `Write`, `Edit` |
+  | `time` / `crypto` / `random` | *(local-only — no external permission)* |
+
+  For `examples/signup.pedro` (which declares `database` + `email` + `crypto`), that's exactly `["Bash(psql:*)", "Bash(sendmail:*)"]` — `crypto` is local so it grants nothing, and `http`/`files` never appear because they were never declared.
 - **The language card fits in one prompt.** [`docs/language-card.md`](docs/language-card.md) is the entire in-context spec — no fine-tuning, no RAG over scattered docs. Every model call gets the complete, current language.
 - **We dogfood this exact loop.** Pedro's own compiler is developed largely by autonomous Claude Code agents running on a schedule against this same `pedroc check` loop (see [`CLAUDE.md`](CLAUDE.md)) — if the authoring loop weren't reliable, the compiler wouldn't be either.
 
@@ -625,14 +636,14 @@ Repo-specific conventions and guardrails for anyone — or any Claude agent — 
 
 Live status and next steps live in [WORKLOG.md](WORKLOG.md). In brief:
 
-- **Done** — the language design; a real deterministic compiler (`pedroc`) for the scalar/list/map/`record`/`enum`/control-flow subset → **Python and TypeScript**; **capabilities + the swappable adapter layer** (Python; database/email/crypto verbs, undeclared-use is a compile error, the declared surface reported by `check --json`); the `pedroc check` loop, typed holes, and structured diagnostics, sandboxed in a subprocess; the [cookbook](docs/cookbook.md) as a passing regression suite (`tools/regress.py`) on both backends; a differential tester + seedable grammar fuzzer running live over both backends (`tools/differential.py`, `tools/fuzz.py`).
+- **Done** — the language design; a real deterministic compiler (`pedroc`) for the scalar/list/map/`record`/`enum`/control-flow subset → **Python and TypeScript**; **capabilities + the swappable adapter layer** (Python; database/email/crypto verbs, undeclared-use is a compile error, the declared surface reported by `check --json`); the **capability → agent-permission bridge** (`pedroc permissions`, see above); the `pedroc check` loop, typed holes, and structured diagnostics, sandboxed in a subprocess; the [cookbook](docs/cookbook.md) as a passing regression suite (`tools/regress.py`) on both backends; a differential tester + seedable grammar fuzzer running live over both backends (`tools/differential.py`, `tools/fuzz.py`).
 - **Next (highest priority first)** — the remaining capability verbs (db `update`/`delete`, `http`/`files`/`time`/`random`) + the TypeScript adapter path; promoting the differential check into a `pedroc check --targets` guarantee; then `docs/SPEC.md`.
 
 ### Committed: bets that make Pedro distinctly agent-native 🧭
 
 Approved 2026-07-28, queued on AntMac, not built yet — each depends on a "Next" item above landing first:
 
-- **Capability manifest → agent permission bridge** (`capability-permission-bridge`). The capability layer it depends on has now landed, so this is unblocked: `pedroc permissions <file>.pedro` will derive an agent-harness permission manifest (starting with a Claude Code `settings.json`-shaped block) straight from a program's declared capability surface — turning "what can this program do" into something checked *before* an agent's output ever runs, never hand-maintained.
+- ~~**Capability manifest → agent permission bridge** (`capability-permission-bridge`)~~ — **LANDED.** `pedroc permissions <file>.pedro` derives the manifest from the declared capability surface; see the "Built for agent-heavy teams" section above for the mapping table.
 - **Cross-target consistency as a CLI guarantee** (`cross-target-check-cli`, depends on the TypeScript backend). Promotes `tools/differential.py`'s cross-backend agreement check into `pedroc check <file>.pedro --targets python,typescript` — "this program behaves identically everywhere" becomes something any user's own code can assert, not just the compiler's own test suite.
 - **Property-based `expect` blocks** (`property-based-expect`). Extends `expect:` with a bounded quantified form (`for all n from 0 to 100: is_prime(n) implies n > 1`), enumerated and checked — a strict superset of today's example-based syntax, and a much higher correctness bar for agent-authored logic than a handful of examples.
 - **Tamper-evident generated output** (`verify-drift-detection`). Embeds a source content-hash in the "do not edit by hand" banner; `pedroc verify <file>.pedro <output>` detects drift — catches the common failure mode where a human hand-patches generated code and an agent later regenerates over it (or vice versa).

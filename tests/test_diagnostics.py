@@ -17,6 +17,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from pedroc import compile_source
 from pedroc.check import check
 from pedroc.suggest import nearest, edit_distance
+from pedroc.permissions import render as render_permissions, permission_manifest, CAPABILITY_RULES
 
 
 def _first_error(src):
@@ -206,6 +207,64 @@ def test_valid_program_has_no_errors():
     report = check(_wrap(["return x"]))
     assert report["ok"] is True
     assert report["errors"] == []
+
+
+# --- the capability -> permission manifest bridge ---------------------------
+
+_SIGNUP = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+    "examples", "signup.pedro",
+)
+
+
+def _read_signup():
+    with open(_SIGNUP, "r", encoding="utf-8") as f:
+        return f.read()
+
+
+def test_permissions_manifest_grants_only_declared_capabilities():
+    src = _read_signup()  # declares database, email, crypto (not http/files/…)
+    surface, rules = permission_manifest(src, filename="signup.pedro")
+    assert surface == ["database", "email", "crypto"]
+    # An UNDECLARED capability's rules must NEVER appear in the output.
+    for cap in ("http", "files"):
+        for rule in CAPABILITY_RULES[cap]:
+            assert rule not in rules, f"{rule!r} leaked from undeclared {cap}"
+    # Only what database + email justify (crypto is local-only → no rule).
+    assert rules == ["Bash(psql:*)", "Bash(sendmail:*)"]
+
+
+def test_permissions_manifest_is_byte_identical_on_regeneration():
+    src = _read_signup()
+    a = render_permissions(src, filename="signup.pedro")
+    b = render_permissions(src, filename="signup.pedro")
+    assert a == b                      # deterministic, same guarantee as codegen
+    assert '"allow"' in a and "Bash(psql:*)" in a
+
+
+def test_permissions_pure_program_emits_empty_manifest():
+    src = _wrap(["return x"])          # declares no capabilities
+    surface, rules = permission_manifest(src)
+    assert surface == []
+    assert rules == []
+    settings = render_permissions(src, fmt="claude-settings")
+    assert '"allow": []' in settings
+
+
+def test_permissions_json_format_shows_derivation():
+    import json as _json
+    doc = _json.loads(render_permissions(_read_signup(), fmt="json"))
+    assert doc["capabilities"] == ["database", "email", "crypto"]
+    assert doc["byCapability"]["crypto"] == []   # local-only, contributes nothing
+    assert doc["allow"] == ["Bash(psql:*)", "Bash(sendmail:*)"]
+
+
+def test_permissions_rejects_unknown_format():
+    try:
+        render_permissions(_read_signup(), fmt="yaml")
+        assert False, "expected an unknown-format error"
+    except ValueError as e:
+        assert "yaml" in str(e)
 
 
 # --- the suggestion engine itself -------------------------------------------
