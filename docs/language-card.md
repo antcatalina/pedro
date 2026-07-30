@@ -24,7 +24,9 @@ check it:
      `suggestion` — the nearest known name/keyword ("did you mean X?"); if it's
      right, just apply it. Common codes: `unexpected-token`, `expected-expression`,
      `bad-indentation`, `unterminated-string`, `undefined-name`, `unknown-task`,
-     `empty-match`, `case-after-otherwise`, `missing-on-failure`, `ambiguous-record`, `unknown-field`,
+     `empty-match`, `case-after-otherwise`, `missing-on-failure`,
+     `unknown-keyword` (a misspelled statement keyword — `suggestion` names the
+     real one, e.g. `repaet` → `repeat`), `ambiguous-record`, `unknown-field`,
      `missing-field`, `empty-record`, `empty-enum`, `undeclared-capability`,
      `unknown-capability`, `unknown-record`.
    - `holes[]` → resolve each `todo`, or ask the user for the missing detail.

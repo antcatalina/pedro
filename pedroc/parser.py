@@ -11,6 +11,15 @@ from .errors import PedroSyntaxError
 from .suggest import nearest
 from . import nodes as N
 
+# The words that legitimately begin a statement. Used only for diagnostics: a
+# statement whose leading name is a near-match to one of these but fails to parse
+# was almost certainly a misspelled keyword (`repaet` -> `repeat`), so we can turn
+# a confusing "expected NEWLINE" into a "did you mean X?" suggestion.
+STATEMENT_KEYWORDS = (
+    "let", "set", "return", "increase", "decrease", "for", "add", "swap",
+    "send", "fail", "todo", "when", "match", "try", "while", "repeat",
+)
+
 
 class Parser:
     def __init__(self, tokens, filename="<pedro>"):
@@ -382,8 +391,25 @@ class Parser:
                 value = self._parse_expr()
                 self._expect("NEWLINE")
                 return N.Assign(name=name, value=value)
-        expr = self._parse_expr()
-        self._expect("NEWLINE")
+        # Otherwise this is a bare expression statement (e.g. a call `f(x)`). If it
+        # fails to parse AND its leading word is a near-match to a statement
+        # keyword, the author almost certainly misspelled the keyword — turn the
+        # generic parse error into a dedicated `unknown-keyword` with a suggestion.
+        lead = self._cur() if self._type() == "NAME" else None
+        try:
+            expr = self._parse_expr()
+            self._expect("NEWLINE")
+        except PedroSyntaxError as e:
+            if lead is not None:
+                s = nearest(lead[1], STATEMENT_KEYWORDS)
+                if s is not None:
+                    raise PedroSyntaxError(
+                        lead[2], f"unknown statement keyword {lead[1]!r}",
+                        code="unknown-keyword", col=lead[3],
+                        hint=f"a statement here starts with a keyword like `{s}`",
+                        suggestion=s,
+                    )
+            raise
         return N.ExprStmt(expr=expr)
 
     def _parse_if_chain(self):

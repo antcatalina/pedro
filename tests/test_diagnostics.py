@@ -84,6 +84,32 @@ def test_is_at_typo_suggests_least_or_most():
     assert err["suggestion"] == "least"
 
 
+def test_misspelled_statement_keyword_suggests_nearest():
+    # A misspelled statement keyword previously fell through to a confusing
+    # "expected NEWLINE, found ..." with no suggestion. Now it's a dedicated
+    # `unknown-keyword` diagnostic that points at the keyword and names the fix.
+    _, err = _first_error(_wrap(["repaet 3 times:", "    increase x by 1"]))
+    assert err["code"] == "unknown-keyword"
+    assert err["suggestion"] == "repeat"
+    assert err["line"] == 4 and err["col"] == 5   # caret on the keyword, not later
+    assert err["hint"]
+
+
+def test_misspelled_when_keyword_suggests_nearest():
+    _, err = _first_error(_wrap(["wen x is 5:", "    return x"]))
+    assert err["code"] == "unknown-keyword"
+    assert err["suggestion"] == "when"
+
+
+def test_bare_call_statement_is_not_mistaken_for_a_keyword_typo():
+    # A valid bare expression statement must never be flagged as a keyword typo.
+    src = ("target: python\n\ntask helper(x: whole) returns whole:\n    return x\n\n"
+           "task f(x: whole) returns whole:\n    helper(x)\n    return x\n\n"
+           "expect:\n    f(1) == 1\n")
+    report = check(src, filename="<test>")
+    assert report["ok"], report["summary"]
+
+
 # --- specific codes + hints -------------------------------------------------
 
 def test_unterminated_string_has_code_and_hint():

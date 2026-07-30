@@ -5,6 +5,46 @@ resume cleanly across sessions.
 
 ---
 
+## 2026-07-30 — Diagnostics: `unknown-keyword` suggestion for misspelled statement keywords
+
+The assigned job was the diagnostics work (columns, specific codes+hints,
+did-you-mean suggestions, compact `check --json` with snippet/caret/capability
+surface). Almost all of it had **already landed** across prior runs: every
+diagnostic carries 1-based `line:col`, a stable `code`, an actionable `hint`, a
+`snippet` with a `^` caret, nearest-match `suggestion`s for unknown
+identifiers/tasks/top-level keywords/`is at least|most`/record fields/capabilities,
+and `check --json` is compact with the declared `capabilities` surface. Per the
+"advance it" rule, I found and closed the one real remaining gap.
+
+**The gap.** A misspelled *statement* keyword (`repaet`, `wen`, `incrase`,
+`retrun`) fell through the statement dispatch to a bare-expression parse, then
+died at the trailing `self._expect("NEWLINE")` with a confusing
+`unexpected-token: expected NEWLINE, found 'x'` — caret on the *next* token, and
+**no suggestion**. That's the worst kind of "errors are prompts" failure: the
+model is pointed away from the actual fix.
+
+**The fix** (`pedroc/parser.py`). Added a module-level `STATEMENT_KEYWORDS` tuple
+and wrapped the fall-through `expr = _parse_expr(); _expect("NEWLINE")` in a
+`try`. On a `PedroSyntaxError`, if the statement's leading word is a near-match
+(edit distance, via `suggest.nearest`) to a statement keyword, it re-raises a
+dedicated **`unknown-keyword`** diagnostic: caret on the keyword itself, a hint,
+and the `suggestion`. Crucially it triggers **only on a parse failure**, so it
+can never mis-flag a valid program — a valid bare call (`helper(x)`) or
+name-operator statement (`x mod 2`, `x is 5`) parses fine and is untouched
+(regress-verified). Deterministic (pure edit distance), no new synonyms.
+
+**Tests** (`tests/test_diagnostics.py`, now 31/31): `repaet`→`repeat` (asserts
+code/suggestion/line/col — caret on the keyword, not the later token),
+`wen`→`when`, and a negative test that a valid bare call statement stays `ok`.
+
+**Docs.** Added `unknown-keyword` to the language-card "read the JSON" code list
+with its `repaet`→`repeat` example. README doesn't enumerate codes (no change).
+`check_docs.py` clean; full `python tools/regress.py` green (corpus Python+TS,
+differential, fuzz, doc-drift).
+
+**Next:** unchanged from the roadmap below — the remaining capability verbs
+(db `update`/`delete`, `http`, `files`, `time`, `random`) and the TS adapter path.
+
 ## 2026-07-30 — `match`/`try` already landed; hardened the `try` diagnostic
 
 The assigned job was to implement `match`/`case` and `try:`/`on failure as err:`.
