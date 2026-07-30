@@ -622,7 +622,8 @@ pedro/
     ├── regress.py           # compiles + checks the whole corpus (CI; run on GitHub Actions + AntMac cron)
     ├── backends.py           # per-backend "run + report expectations" adapter
     ├── differential.py       # runs each corpus program on every backend, asserts agreement
-    └── fuzz.py               # seedable grammar fuzzer with a reference oracle
+    ├── fuzz.py               # seedable grammar fuzzer with a reference oracle
+    └── check_docs.py         # doc-drift backstop: compiler's real construct surface vs. doc claims
 ```
 
 The correctness harness is kept off the default fast path: `python tools/regress.py`
@@ -630,6 +631,19 @@ runs both backends over the corpus plus a tiny fuzz smoke, while `--fuzz`, `--di
 and `--slow` run the full sweeps. The differential lane compares backends against
 each other; now that the TypeScript backend has landed, it runs a live cross-backend
 diff (the TS corpus lane runs automatically whenever `node` is on PATH).
+
+**Docs can't silently drift.** `tools/check_docs.py` is the mechanical backstop for
+[`CLAUDE.md`](CLAUDE.md) ground rule 6: it extracts `pedroc`'s *real* construct surface
+straight from source (every `kw == "…"` / `_is_name("…")` / `_expect(…, "…")` literal in
+`pedroc/parser.py`, plus the `BINOP_MAP` / builtin-dispatch keys in
+`pedroc/codegen_python.py`) and cross-references it against the docs. It flags, **HIGH
+confidence**, any construct the compiler implements that a doc still marks "NOT yet
+supported"/🧭 — the exact bug the 2026-07-28 audit found (`for each` listed as unsupported
+weeks after it shipped) — and, **LOW confidence**, a construct a doc presents as supported
+with no matching keyword anywhere in `pedroc/*.py`. It runs as a labelled, **non-fatal
+warning** inside `tools/regress.py` (new heuristic — false positives possible); run it on
+its own with `python tools/check_docs.py`, and use `python tools/regress.py --strict-docs`
+(or `python tools/check_docs.py --strict-docs`) to make HIGH findings fail.
 
 **CI is machine-independent.** The [`regress` GitHub Actions workflow](.github/workflows/regress.yml)
 runs `PYTHONPATH=. python tools/regress.py` — the exact command below — on every push
@@ -645,7 +659,7 @@ Repo-specific conventions and guardrails for anyone — or any Claude agent — 
 
 Live status and next steps live in [WORKLOG.md](WORKLOG.md). In brief:
 
-- **Done** — the language design; a real deterministic compiler (`pedroc`) for the scalar/list/map/`record`/`enum`/control-flow subset → **Python and TypeScript**; **capabilities + the swappable adapter layer** (Python; database/email/crypto verbs, undeclared-use is a compile error, the declared surface reported by `check --json`); the **capability → agent-permission bridge** (`pedroc permissions`, see above); the `pedroc check` loop, typed holes, and structured diagnostics, sandboxed in a subprocess; the [cookbook](docs/cookbook.md) as a passing regression suite (`tools/regress.py`) on both backends; a differential tester + seedable grammar fuzzer running live over both backends (`tools/differential.py`, `tools/fuzz.py`).
+- **Done** — the language design; a real deterministic compiler (`pedroc`) for the scalar/list/map/`record`/`enum`/control-flow subset → **Python and TypeScript**; **capabilities + the swappable adapter layer** (Python; database/email/crypto verbs, undeclared-use is a compile error, the declared surface reported by `check --json`); the **capability → agent-permission bridge** (`pedroc permissions`, see above); the `pedroc check` loop, typed holes, and structured diagnostics, sandboxed in a subprocess; the [cookbook](docs/cookbook.md) as a passing regression suite (`tools/regress.py`) on both backends; a differential tester + seedable grammar fuzzer running live over both backends (`tools/differential.py`, `tools/fuzz.py`); and a mechanical doc-drift backstop (`tools/check_docs.py`) wired into CI.
 - **Next (highest priority first)** — the remaining capability verbs (db `update`/`delete`, `http`/`files`/`time`/`random`) + the TypeScript adapter path; promoting the differential check into a `pedroc check --targets` guarantee; then `docs/SPEC.md`.
 
 ### Committed: bets that make Pedro distinctly agent-native 🧭
@@ -662,7 +676,7 @@ Approved 2026-07-28, queued on AntMac, not built yet — each depends on a "Next
 This same session found `docs/language-card.md` — the actual in-context spec fed to the authoring LLM — telling the model that lists, maps, and `for each` were unsupported, weeks after they shipped. Two new AntMac jobs address the root cause instead of the symptom:
 
 - **`docs-alignment-audit`** (recurring) — periodically re-runs the README/WORKLOG/CLAUDE.md/language-card.md-vs-actual-compiler cross-check this session did by hand, and fixes drift as it's found.
-- **`docs-consistency-checker`** — builds `tools/check_docs.py`, which greps pedroc's own source for the constructs it actually implements and cross-references that against the "NOT yet supported" claims in the docs, wired into `tools/regress.py` so a shipped feature whose docs didn't catch up gets flagged mechanically. The same "verify by running" principle Pedro applies to your programs, applied to its own documentation.
+- ~~**`docs-consistency-checker`**~~ — **LANDED** (2026-07-30). `tools/check_docs.py` extracts pedroc's real construct surface from source and cross-references it against the "NOT yet supported"/🧭 claims in the docs, wired into `tools/regress.py` as a non-fatal warning (with `--strict-docs` to enforce), so a shipped feature whose docs didn't catch up gets flagged mechanically. See the "Docs can't silently drift" note in the tooling section above. The same "verify by running" principle Pedro applies to your programs, applied to its own documentation.
 
 ## Design principles
 

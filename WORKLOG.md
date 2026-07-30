@@ -5,6 +5,63 @@ resume cleanly across sessions.
 
 ---
 
+## 2026-07-30 — Mechanical doc-drift backstop (`docs-consistency-checker`)
+
+Built `tools/check_docs.py`, the mechanical backstop CLAUDE.md ground rule 6 (and
+the `docs-alignment-audit` job) has been asking for. The 2026-07-28 audit found
+`docs/language-card.md` listing `for each` under "NOT yet supported" for weeks after
+it shipped — a *prose* reminder to "update the docs" already existed and still didn't
+catch it. This applies Pedro's own "verify by running" discipline to its docs.
+
+**What it does.** Extracts pedroc's real construct surface straight from source
+(no imports; regex over the files):
+- from `pedroc/parser.py`: every `kw == "..."`, `_is_name("...")`, and
+  `_expect(..., "...")` string literal — the real keyword/construct surface;
+- from `pedroc/codegen_python.py`: the `BINOP_MAP` and `_BUILTINS` dict *keys*
+  (split on `_` so `count_of`/`followed_by` → the doc words `count`/`of`/`followed`/
+  `by`). Careful to grab exactly those two dicts' keys, **not** the neighbouring
+  `TYPE_MAP`/`CONVERT_MAP` type names (an early greedy regex leaked `whole` and
+  produced a false `whole from` finding — fixed).
+
+Then cross-references against the docs:
+- **HIGH confidence** — the exact 2026-07-28 bug class. In doc "unsupported"
+  regions (language-card's "## NOT yet supported" section + 🧭-marked spans in
+  README/language-card), flag any code span containing an **adjacent run of ≥2
+  implemented keywords** — i.e. an implemented *multi-word construct* declared
+  not-yet-real. The adjacent-run≥2 rule is what keeps it quiet: base-with-
+  unimplemented-variant lines (keyed/descending `sort`, module `use <name> from
+  "..."`, `random whole from … to …`, `is a valid email`) never form such a run
+  because a non-keyword/placeholder token breaks it. Meta-lines *about* the 🧭
+  convention are excluded, and 🧭 must be within 30 chars of the span.
+- **LOW confidence** (clearly labelled, separate) — the reverse: a bare keyword-
+  shaped code span in a language-card "(supported)"/Statements/Expressions **bullet**
+  (no negation cue, not fenced) whose word appears as a string literal *nowhere* in
+  `pedroc/*.py`. Conservative on purpose (bullet-only + negation filter + host-word
+  stoplist) so it's silent on a clean repo.
+
+**Wiring.** Runs as a clearly-separated, labelled step in `tools/regress.py`,
+**non-fatal by default** (new heuristic — false positives possible) but printed
+loudly. `python tools/regress.py --strict-docs` (or `python tools/check_docs.py
+--strict-docs`) promotes HIGH findings to a nonzero exit.
+
+**Proven.** Clean (zero findings) on the current post-2026-07-28-audit repo. Then
+temporarily re-added `for each` to language-card's "NOT yet supported" list — the
+tool flagged it HIGH (`--strict-docs` exit 1) — and reverted; still clean. Full
+`python tools/regress.py` green.
+
+**Next (follow-up job): flip the default to strict.** Once `check_docs.py` has run
+across a few sessions with no false positives, a future job should make HIGH findings
+fail `tools/regress.py` by default (drop the `--strict-docs` gate for HIGH), keeping
+LOW advisory. Also possible: single-word HIGH detection (currently the adjacent-run≥2
+rule intentionally ignores a lone implemented keyword marked unsupported, to avoid the
+base/variant false positives), and scanning `docs/cookbook.md` too.
+
+Docs updated: `README.md` (tooling tree + "Docs can't silently drift" note + roadmap
+item marked LANDED + Done list), `CLAUDE.md` (ground rule 6, "Where things are", "How
+to run"), this entry. No compiler behavior changed.
+
+---
+
 ## 2026-07-29 — Docs-accuracy audit (`docs-alignment-audit`, docs only)
 
 Recurring README/language-card/CLAUDE.md/WORKLOG-vs-actual-compiler cross-check.

@@ -53,6 +53,10 @@ structured feedback — so the language must stay small, regular, and verifiable
   PATH — capability programs are Python-only until the TS adapter path lands).
 - `tools/fuzz.py` — seedable grammar fuzzer with a reference oracle; generates valid
   self-checking Pedro and asserts every backend agrees.
+- `tools/check_docs.py` — doc-drift backstop (ground rule 6): extracts pedroc's real
+  construct surface from `parser.py`/`codegen_python.py` and flags any construct the
+  compiler implements that a doc marks "NOT yet supported"/🧭 (and, low-confidence, the
+  reverse). Runs non-fatally inside `regress.py`; `--strict-docs` makes HIGH findings fail.
 - `docs/` — `design-for-llms.md`, `language-card.md`, `cookbook.md` (+ `SPEC.md`
   planned). `skills/write-pedro/` — the NL→Pedro authoring skill.
 
@@ -75,6 +79,8 @@ python tools/regress.py
 python tools/regress.py --slow          # differential + full fuzz
 python tools/fuzz.py --seed 0 --count 200
 python tools/differential.py -v
+# doc-drift backstop (also runs, non-fatally, inside regress.py):
+python tools/check_docs.py              # advisory; --strict-docs to fail on HIGH findings
 ```
 
 ## Non-negotiable ground rules for ANY change
@@ -97,10 +103,14 @@ python tools/differential.py -v
    already here once and still got violated — `docs/language-card.md` told the
    authoring LLM that lists/maps/`for each` were unsupported for weeks after
    they shipped, because only some of the four docs got touched. Don't trust
-   yourself to remember this by prose alone: if `tools/check_docs.py` exists
-   (see WORKLOG's 2026-07-28 roadmap addendum), run it before you finish and
-   fix anything it flags; if it doesn't exist yet, grep the other three docs
-   for the construct you just added/changed before you consider the task done.
+   yourself to remember this by prose alone: `tools/check_docs.py` is the
+   mechanical backstop (landed 2026-07-30) — it extracts pedroc's real construct
+   surface from source and flags any construct the compiler implements that a doc
+   still marks "NOT yet supported"/🧭. It runs automatically as a non-fatal
+   warning inside `python tools/regress.py`; before you finish a docs-touching
+   change, run `python tools/check_docs.py` and fix anything it flags (HIGH
+   findings especially). It stays advisory until it has proven itself over a few
+   runs; `--strict-docs` (on either script) promotes HIGH findings to a failure.
 
 ## Branch & workflow
 

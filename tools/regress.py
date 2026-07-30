@@ -46,6 +46,8 @@ def main(argv=None):
     ap.add_argument("--diff", action="store_true", help="run the cross-backend differential tester")
     ap.add_argument("--fuzz", action="store_true", help="run the full grammar fuzzer (200 programs)")
     ap.add_argument("--slow", action="store_true", help="run both --diff and --fuzz")
+    ap.add_argument("--strict-docs", action="store_true",
+                    help="promote doc-drift HIGH findings from a warning to a failure")
     args = ap.parse_args(argv)
     run_diff = args.diff or args.slow
     run_full_fuzz = args.fuzz or args.slow
@@ -105,6 +107,30 @@ def main(argv=None):
     print()
     if not run_sandbox_tests():
         all_ok = False
+
+    # Doc-drift backstop (CLAUDE.md ground rule 6). Clearly separated + labelled.
+    # NON-FATAL by default (new heuristic — false positives possible); prints loudly
+    # if it finds anything. `--strict-docs` promotes HIGH findings to a failure.
+    # Once it has proven itself over a few runs with no false positives, a future
+    # job should flip this default to strict (see WORKLOG 2026-07-30).
+    from tools.check_docs import find as find_doc_drift
+    print("\n" + "-" * 72)
+    print("DOC-DRIFT CHECK (tools/check_docs.py) — advisory" +
+          (" [--strict-docs: HIGH fails]" if args.strict_docs else ""))
+    print("-" * 72)
+    doc_high, doc_low = find_doc_drift()
+    if not doc_high and not doc_low:
+        print("[ok  ] no doc/compiler drift detected")
+    else:
+        for msg in doc_high:
+            print(f"[WARN] HIGH: {msg}")
+        for msg in doc_low:
+            print(f"[warn] LOW:  {msg}")
+        if args.strict_docs and doc_high:
+            print("FAIL: --strict-docs set and HIGH doc-drift findings present")
+            all_ok = False
+        else:
+            print("(advisory only — not failing CI; run with --strict-docs to enforce)")
 
     # Correctness harness. A tiny fuzz smoke always runs (fast); the heavier
     # sweeps are opt-in so the default `python tools/regress.py` stays quick.
