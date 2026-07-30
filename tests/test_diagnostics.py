@@ -107,6 +107,28 @@ def test_empty_match_reports_code():
     assert err["hint"]
 
 
+def test_case_after_otherwise_reports_code():
+    _, err = _first_error(_wrap([
+        "match x:",
+        "    case otherwise:",
+        "        return 0",
+        "    case 1:",
+        "        return 1",
+    ]))
+    assert err["code"] == "case-after-otherwise"
+    assert err["hint"]
+
+
+def test_try_without_on_failure_reports_code():
+    _, err = _first_error(_wrap([
+        "try:",
+        "    return x",
+        "return 2",
+    ]))
+    assert err["code"] == "missing-on-failure"
+    assert err["hint"]
+
+
 # --- records & enums --------------------------------------------------------
 
 _REC = ("target: python\n\nenum Color:\n    red\n    green\n\n"

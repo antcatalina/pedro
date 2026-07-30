@@ -5,6 +5,33 @@ resume cleanly across sessions.
 
 ---
 
+## 2026-07-30 — `match`/`try` already landed; hardened the `try` diagnostic
+
+The assigned job was to implement `match`/`case` and `try:`/`on failure as err:`.
+Both had **already landed** in a prior run: parser (`pedroc/parser.py`
+`_parse_match`/`_parse_try`), both backends (`codegen_python.py` → if/elif chain +
+`try/except PedroError`; `codegen_ts.py` → if-chain + `try/catch`), and `check`.
+The two requested cookbook examples exist and pass on both backends —
+`examples/cookbook/state_machine.pedro` (a state machine `match`-ing over an enum,
+5/5) and `examples/cookbook/recover.pedro` (wraps a failing op in `try`/`on failure`
+and recovers, 6/6); `tickets.pedro` also exercises `match` over enum variants.
+
+Per the branch rule ("if a prior run already did your task, advance it"), I
+**hardened the parser diagnostic** instead of redoing the feature. A `try:` body
+not followed by `on failure` previously fell out as a generic
+`unexpected-token` ("expected 'on', found …") with no hint — a weak "errors are
+prompts" case. `_parse_try` now raises a dedicated **`missing-on-failure`** error
+with a hint ("follow the try body with `on failure as err:` and a recovery block").
+Added diagnostic tests for it and for the already-implemented-but-untested
+`case-after-otherwise` arm ordering (`tests/test_diagnostics.py`, now 28/28).
+
+Docs: added `missing-on-failure` to the language-card diagnostic-codes list. Full
+`python tools/regress.py` green (corpus on Python+TS, differential, fuzz,
+doc-drift clean).
+
+**Next:** unchanged from the roadmap below — the remaining capability verbs
+(db `update`/`delete`, `http`, `files`, `time`, `random`) and the TS adapter path.
+
 ## 2026-07-30 — Mechanical doc-drift backstop (`docs-consistency-checker`)
 
 Built `tools/check_docs.py`, the mechanical backstop CLAUDE.md ground rule 6 (and

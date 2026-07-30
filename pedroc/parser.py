@@ -442,7 +442,13 @@ class Parser:
         self._expect("OP", ":")
         self._expect("NEWLINE")
         body = self._parse_block()
-        self._expect("NAME", "on")
+        if not self._is_name("on"):
+            raise PedroSyntaxError(
+                self._line(), "a 'try:' block needs an 'on failure as <err>:' handler",
+                code="missing-on-failure", col=self._col(),
+                hint="follow the try body with `on failure as err:` and a recovery block",
+            )
+        self._advance()  # 'on'
         self._expect("NAME", "failure")
         self._expect("NAME", "as")
         err_name = self._expect("NAME")[1]
