@@ -54,6 +54,22 @@ def test_timeout_does_not_take_down_the_parent():
     assert ok["ok"] is True
 
 
+def test_cpu_limit_backstops_wall_clock():
+    # The child carries a POSIX RLIMIT_CPU backstop to the parent's wall-clock
+    # timeout. With a generous wall-clock (20s) but a tight CPU limit (1s), a
+    # CPU-bound spin must be stopped by the CPU limit — reported as a structured
+    # `timeout` — WITHOUT waiting for the wall-clock budget to elapse.
+    if os.name != "posix":
+        return  # RLIMIT_CPU is not available off POSIX; nothing to assert
+    start = time.time()
+    report = check(_SPIN, filename="<spin-cpu>", timeout=20.0, cpu_timeout=1)
+    elapsed = time.time() - start
+    assert elapsed < 10.0, f"CPU limit should stop the child well before wall-clock, took {elapsed:.1f}s"
+    assert report["ok"] is False
+    assert report.get("status") == "timeout"
+    assert "CPU-time limit" in report["summary"]
+
+
 def test_well_behaved_program_passes_identically():
     src = (
         "target: python\n\n"

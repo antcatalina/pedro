@@ -13,11 +13,21 @@ Protocol (all JSON):
              {"t":"given-ok"}                    a `given` binding succeeded
              {"t":"given-error","message":...}   a `given` binding raised
              {"t":"exp","text","passed","detail"} an assert/fails result
+             {"t":"cpu-limit"}                    the child's CPU-time rlimit hit
 
 The parent reads however many records arrived; the first step with no record is
 the one that hung (on timeout) — see check.py.
+
+Alongside the parent's wall-clock timeout, the parent may impose a POSIX CPU-time
+rlimit (`RLIMIT_CPU`) on this child as a backstop. When that soft limit is hit the
+kernel delivers SIGXCPU; the handler below turns it into a clean `cpu-limit`
+record and exits, so a CPU-bound infinite loop is reported as a structured timeout
+rather than a cryptic signal crash. (A brief hard-limit grace window lets the
+handler emit before SIGKILL.)
 """
 import json
+import os
+import signal
 import sys
 import types
 
@@ -27,7 +37,20 @@ def _emit(rec):
     sys.stdout.flush()
 
 
+def _install_cpu_limit_handler():
+    """Report the parent's CPU-time rlimit as a structured record, not a crash."""
+    if not hasattr(signal, "SIGXCPU"):
+        return  # non-POSIX: no CPU rlimit to catch
+
+    def _on_xcpu(signum, frame):
+        _emit({"t": "cpu-limit"})
+        os._exit(0)  # immediate + no re-entrancy; _emit already flushed
+
+    signal.signal(signal.SIGXCPU, _on_xcpu)
+
+
 def main():
+    _install_cpu_limit_handler()
     payload = json.loads(sys.stdin.read())
     code = payload["code"]
     steps = payload["steps"]

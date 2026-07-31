@@ -5,6 +5,57 @@ resume cleanly across sessions.
 
 ---
 
+## 2026-07-31 — Sandbox hardening: in-child CPU-time rlimit backstop
+
+The assigned job was the subprocess sandbox for `pedroc check` (run generated
+code out-of-process with a wall-clock timeout + restricted env; surface
+timeouts/crashes as structured JSON, not a parent hang). That **landed
+2026-07-27** and is mature. Per the branch rule ("if a prior run already did your
+task, advance it") I hardened it one notch deeper.
+
+**The gap.** The only stop on a runaway child was the parent-side wall-clock
+`subprocess.run(timeout=)`. That's a single mechanism living in the *parent*: if
+the parent is starved/paused (loaded box, stopped in a debugger), the child keeps
+burning a core. Defense-in-depth wants a limit the **kernel** enforces on the
+child itself. `RLIMIT_AS` (a memory cap) was the tempting choice but is **broken
+on Darwin** (confirmed empirically: `setrlimit(RLIMIT_AS, …)` fails with "current
+limit exceeds maximum limit"), so a memory-based test would diverge between the
+two CI machines (AntMac/darwin + GitHub Actions/ubuntu). `RLIMIT_CPU` **is**
+enforced on both.
+
+**The fix.**
+- `pedroc/check.py`: new `_cpu_preexec(cpu_seconds)` — a POSIX-guarded
+  `preexec_fn` that sets `RLIMIT_CPU` on the child (soft = `cpu_seconds`, hard =
+  `+1s` grace). Defaults to `ceil(wall_clock)+1`, so it's a pure backstop that
+  never bites a well-behaved program (corpus runs in ms). Off POSIX it returns
+  `None` → the sandbox behaves exactly as before. New `cpu_timeout` param threaded
+  through `check(...)` and `_run_expectations(...)`.
+- `pedroc/_expect_runner.py`: installs a **SIGXCPU handler** that emits a clean
+  `{"t":"cpu-limit"}` record and `os._exit(0)`s. So hitting the CPU limit is
+  reported as a structured **timeout**, not a cryptic `runner exited with code
+  -24` crash. The hard-limit grace window lets the handler emit before SIGKILL.
+- Reporting: a `cpu-limit` record sets `cpu_exhausted` → `status:"timeout"` with a
+  distinct summary ("execution exceeded its CPU-time limit …"). The hung-step index
+  now counts only per-step records (`_STEP_RECORDS`), so the out-of-band `cpu-limit`
+  record can't skew which expectation is named as stuck.
+
+**Behavior for well-behaved programs is unchanged** — same pass/fail, same `got X,
+expected Y`, no `status` key on a normal run (regress-verified byte-for-byte green).
+
+**Test** (`tests/test_sandbox.py`, now 6/6): `test_cpu_limit_backstops_wall_clock`
+runs the spin program with a *generous* wall-clock (20s) but a *tight* CPU limit
+(1s) and asserts it's stopped as a structured `timeout` in <10s (≈1s in practice)
+— proving the CPU backstop works independently of the wall-clock. POSIX-guarded
+(skips cleanly off POSIX).
+
+**Docs.** README "Sandboxed by default" bullet + CLAUDE.md sandbox line note the
+CPU-time backstop; language-card's "time budget" wording already covers it. Full
+`python tools/regress.py` green (72 corpus + 10/10 TS + 31 diagnostic + **6
+sandbox** + fuzz + doc-drift clean).
+
+**Next:** unchanged from the roadmap below — the remaining capability verbs (db
+`update`/`delete`, `http`, `files`, `time`, `random`) and the TS adapter path.
+
 ## 2026-07-30 — Diagnostics: `unknown-keyword` suggestion for misspelled statement keywords
 
 The assigned job was the diagnostics work (columns, specific codes+hints,

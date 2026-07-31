@@ -167,8 +167,9 @@ runs green on both, and `tools/differential.py` asserts the two backends agree.
 `suggestion` ("did you mean X?") for unknown identifiers/tasks/keywords, and the
 program's declared `capabilities` surface; `check --json` is compact (null fields omitted).
 `check` runs the generated program in a **sandboxed subprocess** (wall-clock
-timeout + restricted env, `pedroc/_expect_runner.py`), reporting a non-terminating
-or crashing program as `status:"timeout"`/`"error"` instead of hanging.
+timeout + a POSIX `RLIMIT_CPU` backstop + restricted env,
+`pedroc/_expect_runner.py`), reporting a non-terminating or crashing program as
+`status:"timeout"`/`"error"` instead of hanging.
 
 **Designed but NOT yet in the compiler** (see `WORKLOG.md` roadmap, highest first):
 the remaining capability verbs (db `update`/`delete`, `http`, `files`, `time`,

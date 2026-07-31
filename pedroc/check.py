@@ -14,6 +14,7 @@ non-terminating Pedro can only hang or crash that child — never the compiler.
 Timeouts and crashes are surfaced as structured results, not as a parent hang.
 """
 import json
+import math
 import os
 import subprocess
 import sys
@@ -109,7 +110,8 @@ def _strip_parens(s):
     return s[1:-1] if s.startswith("(") and s.endswith(")") else s
 
 
-def check(source, filename="<pedro>", target="python", timeout=DEFAULT_TIMEOUT):
+def check(source, filename="<pedro>", target="python", timeout=DEFAULT_TIMEOUT,
+          cpu_timeout=None):
     report = {
         "ok": False,
         "file": filename,
@@ -164,7 +166,7 @@ def check(source, filename="<pedro>", target="python", timeout=DEFAULT_TIMEOUT):
     code = generate(program, filename)
     steps = _build_steps(program)
     adapters = _adapters_source() if surface else None
-    run = _run_expectations(code, steps, timeout, adapters)
+    run = _run_expectations(code, steps, timeout, adapters, cpu_timeout)
 
     if run["load_error"] is not None:
         report["errors"].append({"line": 0, "code": "codegen-error", "message": run["load_error"], "hint": None})
@@ -187,10 +189,16 @@ def check(source, filename="<pedro>", target="python", timeout=DEFAULT_TIMEOUT):
         report["status"] = "timeout"
         report["ok"] = False
         where = f" while running {run['hung']!r}" if run["hung"] else ""
-        report["summary"] = (
-            f"execution timed out after {timeout:g}s (possible infinite loop){where}; "
-            f"{n_pass}/{n_total} expectations passed before timeout"
-        )
+        if run["cpu_exhausted"]:
+            report["summary"] = (
+                f"execution exceeded its CPU-time limit (possible infinite loop){where}; "
+                f"{n_pass}/{n_total} expectations passed before it was stopped"
+            )
+        else:
+            report["summary"] = (
+                f"execution timed out after {timeout:g}s (possible infinite loop){where}; "
+                f"{n_pass}/{n_total} expectations passed before timeout"
+            )
         return report
 
     report["ok"] = (not report["errors"]) and (not report["holes"]) and (n_pass == n_total)
@@ -237,20 +245,56 @@ def _restricted_env():
     return env
 
 
-def _run_expectations(code, steps, timeout, adapters=None):
+# Records the child emits once per completed step (one and only one of these per
+# step). Used to align a partial record stream with `steps` on timeout, ignoring
+# out-of-band records like `cpu-limit`.
+_STEP_RECORDS = ("given-ok", "given-error", "exp")
+
+
+def _cpu_preexec(cpu_seconds):
+    """A POSIX `preexec_fn` that caps the child's CPU time as a backstop to the
+    parent's wall-clock timeout. Soft limit fires SIGXCPU (the runner turns that
+    into a clean `cpu-limit` record); the +1s hard-limit grace lets it emit before
+    the kernel SIGKILLs. Returns None where `RLIMIT_CPU` isn't available (non-POSIX),
+    so the sandbox behaves exactly as before there."""
+    if os.name != "posix":
+        return None
+    try:
+        import resource
+    except ImportError:
+        return None
+
+    def _apply():
+        try:
+            resource.setrlimit(resource.RLIMIT_CPU, (cpu_seconds, cpu_seconds + 1))
+        except (ValueError, OSError):
+            pass  # best-effort; the wall-clock timeout is still the primary guard
+
+    return _apply
+
+
+def _run_expectations(code, steps, timeout, adapters=None, cpu_timeout=None):
     """Run the generated program's expect block in a sandboxed subprocess and
     collect per-step results. Never hangs or raises: a non-terminating program is
     reported via `timed_out`, a crashing one via `crash`. `adapters` (if given) is
     the reference in-memory capability module source, injected as
-    `pedro_capabilities` so a capability program is runnable in the sandbox."""
+    `pedro_capabilities` so a capability program is runnable in the sandbox.
+
+    Besides the parent-side wall-clock `timeout`, the child gets a POSIX
+    `RLIMIT_CPU` backstop (defaults to just beyond the wall-clock budget) so a
+    CPU-bound loop is still stopped even if the parent's timer is starved; a hit is
+    surfaced via `timed_out`+`cpu_exhausted`."""
     result = {"expectations": [], "given_errors": [], "load_error": None,
-              "crash": None, "timed_out": False, "hung": None}
+              "crash": None, "timed_out": False, "cpu_exhausted": False, "hung": None}
+    if cpu_timeout is None:
+        cpu_timeout = int(math.ceil(timeout)) + 1
     payload = json.dumps({"code": code, "steps": steps, "adapters": adapters})
     try:
         proc = subprocess.run(
             [sys.executable, _RUNNER],
             input=payload, capture_output=True, text=True,
             timeout=timeout, env=_restricted_env(), cwd=os.path.dirname(_RUNNER),
+            preexec_fn=_cpu_preexec(cpu_timeout),
         )
         out, err, timed_out, rc = proc.stdout, proc.stderr, False, proc.returncode
     except subprocess.TimeoutExpired as e:
@@ -277,12 +321,16 @@ def _run_expectations(code, steps, timeout, adapters=None):
         elif t == "exp":
             result["expectations"].append(
                 {"text": rec.get("text"), "passed": bool(rec.get("passed")), "detail": rec.get("detail")})
+        elif t == "cpu-limit":
+            result["cpu_exhausted"] = True
 
-    if timed_out:
+    if timed_out or result["cpu_exhausted"]:
         result["timed_out"] = True
-        # The first step with no emitted record is the one still running.
-        if len(records) < len(steps):
-            result["hung"] = steps[len(records)].get("text") or steps[len(records)].get("expr")
+        # The first step with no emitted record is the one still running. Count only
+        # per-step records so an out-of-band `cpu-limit` record doesn't skew the index.
+        done = sum(1 for r in records if r.get("t") in _STEP_RECORDS)
+        if done < len(steps):
+            result["hung"] = steps[done].get("text") or steps[done].get("expr")
     elif result["load_error"] is None and rc not in (0, None):
         detail = (err or "").strip().splitlines()
         result["crash"] = detail[-1] if detail else f"runner exited with code {rc}"
