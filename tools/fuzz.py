@@ -101,17 +101,45 @@ def gen_bool(rng, depth):
     return f"({ls} or {rs})", (lv or rv)
 
 
-def gen_list(rng, depth):
+def gen_list(rng, depth, lo=0, hi=4):
     """Return (pedro_source, list_value) — a flat list of small ints."""
-    n = rng.randint(0, 4)
+    n = rng.randint(lo, hi)
     vals = [rng.randint(1, 9) for _ in range(n)]
     src = "[" + ", ".join(str(v) for v in vals) + "]"
     return src, vals
 
 
+# A tiny ASCII-only word pool for text fuzzing; ASCII keeps Python and JS string
+# ordering/concatenation identical (no UTF-16 surrogate or code-point divergence).
+_WORDS = ["ada", "byte", "cat", "delta", "echo", "fox", "gamma", "hi", "io", "jazz"]
+
+
+def _list_literal(vals):
+    return "[" + ", ".join(str(v) for v in vals) + "]"
+
+
+def gen_str(rng, depth):
+    """Return (pedro_source, str_value) — words, concatenation, interpolation."""
+    if depth <= 0 or rng.random() < 0.5:
+        w = rng.choice(_WORDS)
+        return f'"{w}"', w
+    if rng.random() < 0.5:
+        ls, lv = gen_str(rng, depth - 1)
+        rs, rv = gen_str(rng, depth - 1)
+        return f"({ls} followed by {rs})", lv + rv
+    # interpolation of a non-negative int → its decimal digits (portable both ways)
+    pre = rng.choice(_WORDS)
+    post = rng.choice(_WORDS)
+    ns, nv = gen_int(rng, depth - 1)
+    return f'"{pre}{{{ns}}}{post}"', f"{pre}{nv}{post}"
+
+
 def gen_expect_line(rng, depth):
     """One self-true `expect` assertion, chosen from several expression families."""
-    kind = rng.choice(["int", "bool", "count", "member", "concat"])
+    kind = rng.choice([
+        "int", "bool", "count", "member", "concat",
+        "str", "index", "ends", "slice", "sort", "range", "comprehension",
+    ])
     if kind == "int":
         s, v = gen_int(rng, depth)
         return f"{s} == {v}"
@@ -129,14 +157,178 @@ def gen_expect_line(rng, depth):
         # pick a value guaranteed absent (10..19; list holds 1..9)
         y = rng.randint(10, 19)
         return f"{y} not in {s}"
-    # concat: (A followed by B) == A ++ B
-    a_s, a_v = gen_list(rng, depth)
-    b_s, b_v = gen_list(rng, depth)
-    concat = "[" + ", ".join(str(v) for v in (a_v + b_v)) + "]"
-    return f"({a_s} followed by {b_s}) == {concat}"
+    if kind == "concat":
+        a_s, a_v = gen_list(rng, depth)
+        b_s, b_v = gen_list(rng, depth)
+        return f"({a_s} followed by {b_s}) == {_list_literal(a_v + b_v)}"
+    if kind == "str":
+        s, v = gen_str(rng, depth)
+        return f'{s} == "{v}"'
+    if kind == "index":
+        # item at / first of / last of over a guaranteed-non-empty list
+        s, vals = gen_list(rng, depth, lo=1)
+        pick = rng.choice(["item", "first", "last"])
+        if pick == "first":
+            return f"first of {s} == {vals[0]}"
+        if pick == "last":
+            return f"last of {s} == {vals[-1]}"
+        i = rng.randrange(len(vals))
+        return f"item at {i} in {s} == {vals[i]}"
+    if kind == "ends":
+        # take n from / drop n from, n within [0, len]
+        s, vals = gen_list(rng, depth)
+        n = rng.randint(0, len(vals))
+        if rng.random() < 0.5:
+            return f"take {n} from {s} == {_list_literal(vals[:n])}"
+        return f"drop {n} from {s} == {_list_literal(vals[n:])}"
+    if kind == "slice":  # copy of is value-equal to the original
+        s, vals = gen_list(rng, depth)
+        return f"copy of {s} == {_list_literal(vals)}"
+    if kind == "sort":
+        s, vals = gen_list(rng, depth)
+        return f"sort {s} == {_list_literal(sorted(vals))}"
+    if kind == "range":  # numbers from a to b, inclusive
+        a = rng.randint(1, 6)
+        b = rng.randint(a, a + 5)
+        return f"numbers from {a} to {b} == {_list_literal(list(range(a, b + 1)))}"
+    # comprehension: sum of / collect / filter / count-where over a list
+    s, vals = gen_list(rng, depth)
+    k = rng.randint(1, 9)
+    form = rng.choice(["sum", "collect", "filter", "countwhere"])
+    if form == "sum":
+        total = sum(v for v in vals if v > k)
+        return f"sum of v for each v in {s} where v is greater than {k} == {total}"
+    if form == "collect":
+        doubled = [v * 2 for v in vals]
+        return f"collect (v * 2) for each v in {s} == {_list_literal(doubled)}"
+    if form == "filter":
+        kept = [v for v in vals if v <= k]
+        return f"filter v in {s} where v is at most {k} == {_list_literal(kept)}"
+    kept = [v for v in vals if v > k]
+    return f"count of (filter v in {s} where v is greater than {k}) == {len(kept)}"
+
+
+def gen_int_env(rng, depth, env):
+    """Like gen_int but may reference an in-scope variable as a leaf. `env` maps
+    name→known non-negative value, so the value is tracked exactly alongside the
+    source (generate-and-interpret in lockstep)."""
+    if depth <= 0 or rng.random() < 0.45:
+        if env and rng.random() < 0.5:
+            name = rng.choice(list(env))
+            return name, env[name]
+        v = rng.randint(1, 12)
+        return str(v), v
+    op = rng.choice(["+", "-", "*", "div", "mod"])
+    ls, lv = gen_int_env(rng, depth - 1, env)
+    rs, rv = gen_int_env(rng, depth - 1, env)
+    if op == "+":
+        return f"({ls} + {rs})", lv + rv
+    if op == "*":
+        return f"({ls} * {rs})", lv * rv
+    if op == "-":
+        if lv < rv:
+            ls, lv, rs, rv = rs, rv, ls, lv
+        return f"({ls} - {rs})", lv - rv
+    if rv == 0:
+        rv = rng.randint(1, 12)
+        rs = str(rv)
+    if op == "div":
+        return f"({ls} div {rs})", lv // rv
+    return f"({ls} mod {rs})", lv % rv
+
+
+def gen_bool_env(rng, depth, env):
+    """A boolean condition over env variables, with its known truth value."""
+    ls, lv = gen_int_env(rng, depth, env)
+    rs, rv = gen_int_env(rng, depth, env)
+    word, fn = rng.choice(_CMP)
+    return f"{ls} {word} {rs}", fn(lv, rv)
+
+
+# Names available for freshly-declared locals in a generated task body.
+_LOCALS = ["c", "d", "e", "g", "h", "k", "m", "n", "p", "q"]
+
+
+def gen_task_program(rng, depth):
+    """A `task f(a, b) returns whole` with a random statement body — `let`,
+    reassign, `increase`/`decrease`, `when`-return, `for each` accumulation — and
+    a self-checking `expect` that calls it. The body is interpreted in lockstep so
+    the expected result is exact; the two backends must both reproduce it.
+
+    Non-negativity is preserved throughout (leaves are positive, `-` orders
+    operands high-low), keeping `div`/`mod` portable between Python `//` and JS
+    `Math.floor` division."""
+    av, bv = rng.randint(1, 12), rng.randint(1, 12)
+    env = {"a": av, "b": bv}
+    lines = []
+    returned = None  # set to the returned value once a `return` fires
+    fresh = iter(_LOCALS)
+    nstmts = rng.randint(2, 5)
+
+    for _ in range(nstmts):
+        if returned is not None:
+            break
+        kind = rng.choice(["let", "reassign", "incdec", "when", "foreach"])
+        if kind == "let":
+            name = next(fresh, None)
+            if name is None or name in env:
+                continue
+            s, v = gen_int_env(rng, depth, env)
+            lines.append(f"    let {name} = {s}")
+            env[name] = v
+        elif kind == "reassign" and env:
+            name = rng.choice([n for n in env])
+            s, v = gen_int_env(rng, depth, env)
+            if rng.random() < 0.5:
+                lines.append(f"    {name} = {s}")
+            else:
+                lines.append(f"    set {name} to {s}")
+            env[name] = v
+        elif kind == "incdec" and env:
+            name = rng.choice([n for n in env])
+            amt = rng.randint(1, 8)
+            if rng.random() < 0.5:
+                lines.append(f"    increase {name} by {amt}")
+                env[name] += amt
+            else:
+                amt = min(amt, env[name])  # keep it non-negative
+                lines.append(f"    decrease {name} by {amt}")
+                env[name] -= amt
+        elif kind == "when":
+            cond_s, cond_v = gen_bool_env(rng, depth, env)
+            ret_s, ret_v = gen_int_env(rng, depth, env)
+            lines.append(f"    when {cond_s}:")
+            lines.append(f"        return {ret_s}")
+            if cond_v:  # taken → the rest of the body is unreachable
+                returned = ret_v
+        else:  # foreach accumulation over an inclusive range
+            name = next(fresh, None)
+            if name is None or name in env:
+                continue
+            loopvar = next(fresh, None)
+            if loopvar is None or loopvar in env:
+                continue
+            hi = rng.randint(1, 5)
+            lines.append(f"    let {name} = 0")
+            lines.append(f"    for each {loopvar} in numbers from 1 to {hi}:")
+            lines.append(f"        increase {name} by {loopvar}")
+            env[name] = sum(range(1, hi + 1))
+
+    if returned is None:
+        s, v = gen_int_env(rng, depth, env)
+        lines.append(f"    return {s}")
+        returned = v
+
+    body = "\n".join(lines)
+    return (f"target: python\n\ntask f(a: whole, b: whole) returns whole:\n"
+            f"{body}\n\nexpect:\n    f({av}, {bv}) == {returned}\n")
 
 
 def gen_program(rng, lines, depth):
+    # Mix expect-only expression programs with statement-bodied task programs so
+    # both the expression grammar and the statement codegen surface get exercised.
+    if rng.random() < 0.4:
+        return gen_task_program(rng, depth)
     body = "\n".join("    " + gen_expect_line(rng, depth) for _ in range(lines))
     return f"target: python\n\nexpect:\n{body}\n"
 

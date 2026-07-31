@@ -176,6 +176,12 @@ class Num:
 @dataclass
 class Str:
     value: str
+    # Structured interpolation, set by the parser when the literal contains a
+    # `{expr}` hole: an ordered list of ("text", str) and ("expr", ast) parts, so
+    # each backend re-generates the hole expression through its own codegen (a hole
+    # like `{a div b}` must become `//` in Python and floored `/` in TS — pasting
+    # the raw Pedro source would emit invalid target code). None ⇒ a plain string.
+    parts: Optional[list] = None
 
 
 @dataclass

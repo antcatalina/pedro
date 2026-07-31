@@ -287,7 +287,7 @@ Pedro identifiers are written in `snake_case`; the compiler converts them to the
 ### Literals — implemented
 
 ```pedro
-"hello, {name}!"          # text, with {interpolation}; escape braces as \{ \}
+"total {a div b}!"        # text; each {…} hole is a full expression; escape braces as \{ \}
 42        3.14            # whole, number
 true      false           # flag
 [1, 2, 3]                 # list

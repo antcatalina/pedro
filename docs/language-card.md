@@ -28,7 +28,9 @@ check it:
      `unknown-keyword` (a misspelled statement keyword — `suggestion` names the
      real one, e.g. `repaet` → `repeat`), `ambiguous-record`, `unknown-field`,
      `missing-field`, `empty-record`, `empty-enum`, `undeclared-capability`,
-     `unknown-capability`, `unknown-record`.
+     `unknown-capability`, `unknown-record`, `bad-interpolation` /
+     `empty-interpolation` / `unterminated-interpolation` (the text inside a
+     `"…{expr}…"` hole must be a valid, closed Pedro expression).
    - `holes[]` → resolve each `todo`, or ask the user for the missing detail.
    - `expectations[].passed == false` → your logic is wrong; `detail` gives
      `got X, expected <op> Y`. Fix and re-check.
@@ -101,8 +103,10 @@ expect:
 - logic: `and`, `or`, `not`
 - string concat: `a followed by b`
 - convert: `value as text` / `as whole` / `as number`
-- literals: `42`, `3.14`, `true`, `false`, `"text with {interpolation}"`,
-  `[1, 2, 3]` (list), `{ "k": value }` (map — string/expr keys),
+- literals: `42`, `3.14`, `true`, `false`, `"text with {any expression}"`
+  (each `{…}` hole is a full Pedro expression — `"avg {total div count}"` works;
+  write `\{` / `\}` for a literal brace), `[1, 2, 3]` (list),
+  `{ "k": value }` (map — string/expr keys),
   `{ field: value }` (record — bare field-name keys; see below), `nothing`
 - collection ops: `count of x` · `item at i in x` · `first of x` · `last of x` ·
   `copy of x` · `characters of x` · `take n from x` · `drop n from x` ·

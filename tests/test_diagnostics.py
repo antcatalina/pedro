@@ -126,6 +126,46 @@ def test_unexpected_character_has_hint():
     assert err["col"] == 14
 
 
+# --- string interpolation (holes are compiled, not pasted) ------------------
+
+def test_interpolation_hole_is_compiled_through_codegen():
+    # A `{a div b}` hole must translate the operator per backend, not paste raw
+    # Pedro source. If it were pasted, Python would raise a codegen f-string error.
+    src = ('target: python\n\ntask f(a: whole, b: whole) returns text:\n'
+           '    return "avg {a div b} rem {a mod b}"\n\n'
+           'expect:\n    f(17, 5) == "avg 3 rem 2"\n')
+    report = check(src, filename="<test>")
+    assert report["ok"], report
+    assert report["expectations"][0]["passed"]
+
+
+def test_comprehension_binder_resolves_in_expect_block():
+    # The comprehension binder scopes over `where`, including in an `expect` line
+    # (which has no task-level pre-pass to pre-declare it). Regression guard.
+    src = ('target: python\n\nexpect:\n'
+           '    filter v in [1, 8, 3] where v is at most 4 == [1, 3]\n')
+    report = check(src, filename="<test>")
+    assert report["ok"], report
+
+
+def test_bad_interpolation_reports_code():
+    _, err = _first_error(_wrap(['return "value {a +}"']))
+    assert err["code"] == "bad-interpolation"
+    assert err["hint"]
+
+
+def test_empty_interpolation_reports_code():
+    _, err = _first_error(_wrap(['return "value {}"']))
+    assert err["code"] == "empty-interpolation"
+    assert err["hint"]
+
+
+def test_unterminated_interpolation_reports_code():
+    _, err = _first_error(_wrap(['return "value {a"']))
+    assert err["code"] == "unterminated-interpolation"
+    assert err["hint"]
+
+
 def test_empty_match_reports_code():
     _, err = _first_error(_wrap(["match x:", "    return x"]))
     # `return` is not a `case`, so the match has no arms

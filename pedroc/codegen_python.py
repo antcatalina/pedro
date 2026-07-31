@@ -335,10 +335,40 @@ def _gen_str(value):
     return '"' + value + '"'
 
 
+def _gen_interpolation(parts):
+    """A `Str` with structured interpolation → a Python f-string, with each hole's
+    expression re-generated through codegen (so `div`→`//`, etc.)."""
+    out = []
+    for kind, val in parts:
+        if kind == "text":
+            out.append(val.replace("{", "{{").replace("}", "}}"))
+        else:  # expr — render through codegen, guard braces from f-string parsing
+            code = _gen_expr(val)
+            if "{" in code or "}" in code or "\\" in code:
+                # A hole whose generated code itself contains braces/backslashes
+                # can't sit in an f-string; concatenate via str() instead.
+                return _gen_interpolation_concat(parts)
+            out.append("{" + code + "}")
+    return 'f"' + "".join(out) + '"'
+
+
+def _gen_interpolation_concat(parts):
+    """Fallback for holes whose codegen contains braces: `("t" + str(expr) + ...)`."""
+    pieces = []
+    for kind, val in parts:
+        if kind == "text":
+            pieces.append('"' + val.replace("\\", "\\\\").replace('"', '\\"') + '"')
+        else:
+            pieces.append(f"str({_gen_expr(val)})")
+    return "(" + " + ".join(pieces) + ")" if pieces else '""'
+
+
 def _gen_expr(e):
     if isinstance(e, N.Num):
         return e.value
     if isinstance(e, N.Str):
+        if e.parts is not None:
+            return _gen_interpolation(e.parts)
         return _gen_str(e.value)
     if isinstance(e, N.Bool):
         return "True" if e.value else "False"

@@ -88,10 +88,15 @@ def resolve(program):
             for a in e.args:
                 check_expr(a, env)
         elif isinstance(e, N.Comp):
+            # The binder scopes over `elem`/`cond` but NOT the collection it
+            # iterates. In a task body `_bound_in` already carries `e.var`, but
+            # an `expect`-block comprehension has no such pre-pass — so bind it
+            # locally here to get correct lexical scoping in both contexts.
             check_expr(e.coll, env)
-            check_expr(e.elem, env)
+            inner = env | {e.var}
+            check_expr(e.elem, inner)
             if e.cond is not None:
-                check_expr(e.cond, env)
+                check_expr(e.cond, inner)
         # Num/Str/Bool: leaves, nothing to resolve
 
     def check_stmts(stmts, env):

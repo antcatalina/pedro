@@ -378,10 +378,27 @@ def _gen_str(value):
     return _js_string(value)
 
 
+def _gen_interpolation(parts):
+    """A `Str` with structured interpolation → a JS template literal, with each
+    hole's expression re-generated through codegen (so `div` floors, etc.)."""
+    out = []
+    for kind, val in parts:
+        if kind == "text":
+            # Literal text: escape backslash and backtick; `${` would start an
+            # interpolation, so escape a literal `$` that precedes a `{`.
+            esc = val.replace("\\", "\\\\").replace("`", "\\`").replace("${", "\\${")
+            out.append(esc)
+        else:
+            out.append("${" + _gen_expr(val) + "}")
+    return "`" + "".join(out) + "`"
+
+
 def _gen_expr(e):
     if isinstance(e, N.Num):
         return e.value
     if isinstance(e, N.Str):
+        if e.parts is not None:
+            return _gen_interpolation(e.parts)
         return _gen_str(e.value)
     if isinstance(e, N.Bool):
         return "true" if e.value else "false"

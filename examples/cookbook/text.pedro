@@ -43,3 +43,12 @@ task is_anagram(first: text, second: text) returns flag:
 expect:
     is_anagram("listen", "silent") == true
     is_anagram("apple", "pale") == false
+
+# String interpolation compiles the expression INSIDE each `{...}` hole through
+# codegen, so operators/builtins translate per backend (`div` -> `//` in Python,
+# floored `/` in TS): the hole is not pasted as raw source. Both backends agree.
+task receipt(count: whole, total: whole) returns text:
+    return "{count} items, {total div count} each, {count} left"
+
+expect:
+    receipt(4, 20) == "4 items, 5 each, 4 left"

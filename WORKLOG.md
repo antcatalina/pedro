@@ -5,6 +5,60 @@ resume cleanly across sessions.
 
 ---
 
+## 2026-07-31 — Fuzzer grammar expansion → found + fixed two cross-backend bugs
+
+The assigned job was the cross-backend correctness harness (differential tester +
+grammar fuzzer, wired behind a flag). Both had **already landed** and are green.
+Per the "advance it" branch rule I widened the fuzzer's grammar so it exercises
+codegen paths that were untested — and it immediately surfaced **two real
+compiler bugs**, both now fixed.
+
+**Fuzzer coverage (`tools/fuzz.py`).** `gen_expect_line` grew from
+arithmetic/bool/list/membership/concat to also cover: strings (`followed by` on
+text + `"{interpolation}"`), collection ops (`item at`, `first/last of`,
+`take`/`drop`, `copy of`, `sort`, `numbers from a to b`), and comprehensions
+(`sum of … for each … where`, `collect … for each`, `filter … where`,
+`count of (filter …)`). New `gen_task_program` emits a `task f(a, b) returns
+whole` with a random statement body (`let`, reassign/`set`, `increase`/`decrease`,
+`when`-return, `for each` accumulation over `numbers from …`) — the statement
+codegen surface the fuzzer never touched — interpreted in lockstep so the
+`expect f(a,b) == <exact result>` is self-checking. Everything stays
+non-negative so `div`/`mod` are portable (Python `//` vs JS `Math.floor`). All
+seedable/reproducible; 500 programs × several seeds green on python+typescript.
+
+**Bug 1 — comprehension binder not scoped in `expect` blocks (`resolve.py`).**
+`filter v in xs where v …` reported `undefined-name: 'v'` when written in an
+`expect` line. `check_expr`'s `N.Comp` case resolved `elem`/`cond` in the *outer*
+env without adding the binder; inside a task it worked only by accident because
+`_bound_in` pre-collects every comprehension var into the flat task env, but the
+`expect`-block env has no such pre-pass. Fixed with proper lexical scoping: bind
+`e.var` locally over `elem`/`cond` (but not the iterated collection). Correct in
+both contexts now.
+
+**Bug 2 — string interpolation pasted raw Pedro source (`parser.py` +
+both codegens).** A `{a div b}` hole was copied verbatim into the target string,
+so operators/builtins were never translated — Python raised a codegen f-string
+error and TS would have emitted `${… div …}`. Fixed with **structured
+interpolation**: the parser now splits a string literal into ordered
+`("text", …)` / `("expr", ast)` parts (`_parse_interpolation` → `_parse_hole`,
+balancing nested braces, honoring `\{`/`\}`), stored on `N.Str.parts`. Both
+backends re-generate each hole through their own `_gen_expr` (Python f-string,
+TS template literal), so `div`→`//` / floored `/`, `mod`→`%`, `count of …`, etc.
+all translate. Plain strings and simple `{name}` holes are byte-identical to
+before (verified against the corpus). New diagnostics: `bad-interpolation`,
+`empty-interpolation`, `unterminated-interpolation`.
+
+**Tests / corpus.** `examples/cookbook/text.pedro` gains a `receipt` task that
+interpolates `{total div count}` (guards bug 2 in the corpus + differential lane).
+`tests/test_diagnostics.py` +5 (36 total): interpolation-hole-compiles,
+comprehension-binder-in-expect regression, and the three interpolation error
+codes. Full `python tools/regress.py --slow` green: 72 corpus + 10/10 TS +
+36 diagnostic + 6 sandbox + 200-program fuzz + corpus differential + doc-drift
+clean.
+
+**Next:** unchanged from the roadmap below — the remaining capability verbs (db
+`update`/`delete`, `http`, `files`, `time`, `random`) and the TS adapter path.
+
 ## 2026-07-31 — Sandbox hardening: in-child CPU-time rlimit backstop
 
 The assigned job was the subprocess sandbox for `pedroc check` (run generated

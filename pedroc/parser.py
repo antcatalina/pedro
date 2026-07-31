@@ -611,7 +611,8 @@ class Parser:
             return self._parse_postfix(N.Num(value=t[1]))
         if t[0] == "STRING":
             self._advance()
-            return self._parse_postfix(N.Str(value=t[1]))
+            parts = self._parse_interpolation(t[1], t[2], t[3])
+            return self._parse_postfix(N.Str(value=t[1], parts=parts))
         if t[0] == "NAME":
             val = t[1]
             line, col = t[2], t[3]
@@ -699,6 +700,77 @@ class Parser:
                 node = N.Convert(expr=node, to=self._expect("NAME")[1])
             else:
                 return node
+
+    def _parse_interpolation(self, value, line, col):
+        """Split a string literal into interpolation parts, or return None if it
+        has no `{expr}` hole. Each hole's source is tokenized and parsed as a full
+        Pedro expression so the backends can re-emit it in their own syntax.
+        `\\{`/`\\}` are literal braces. Brace nesting inside a hole (e.g. a map
+        literal) is balanced so the hole ends at its matching `}`."""
+        if "{" not in value and "}" not in value:
+            return None
+        parts = []
+        text = []
+        i, n = 0, len(value)
+        while i < n:
+            c = value[i]
+            if c == "\\" and i + 1 < n and value[i + 1] in "{}":
+                text.append(value[i + 1])
+                i += 2
+                continue
+            if c == "{":
+                if text:
+                    parts.append(("text", "".join(text)))
+                    text = []
+                # Find the matching close brace, balancing nested braces.
+                depth, j = 1, i + 1
+                while j < n and depth > 0:
+                    if value[j] == "{":
+                        depth += 1
+                    elif value[j] == "}":
+                        depth -= 1
+                    if depth == 0:
+                        break
+                    j += 1
+                if depth != 0:
+                    raise PedroSyntaxError(
+                        line, "unterminated interpolation: missing '}'",
+                        code="unterminated-interpolation", col=col,
+                        hint='close the `{` in the string, or write `\\{` for a literal brace')
+                hole = value[i + 1:j].strip()
+                if not hole:
+                    raise PedroSyntaxError(
+                        line, "empty interpolation `{}`", code="empty-interpolation",
+                        col=col, hint='put an expression inside, or write `\\{\\}` for literal braces')
+                parts.append(("expr", self._parse_hole(hole, line, col)))
+                i = j + 1
+                continue
+            if c == "}":
+                raise PedroSyntaxError(
+                    line, "unexpected '}' in string", code="unexpected-token", col=col,
+                    hint="write `\\}` for a literal '}', or open a `{` interpolation first")
+            text.append(c)
+            i += 1
+        if text:
+            parts.append(("text", "".join(text)))
+        return parts
+
+    def _parse_hole(self, source, line, col):
+        """Parse one interpolation hole's source as a standalone Pedro expression."""
+        from .lexer import tokenize
+        try:
+            sub = Parser(tokenize(source), filename=self.filename)
+            expr = sub._parse_expr()
+            if sub._type() not in ("NEWLINE", "EOF"):
+                raise PedroSyntaxError(
+                    line, f"unexpected {sub._val()!r} after interpolation expression",
+                    code="unexpected-token", col=col)
+        except PedroSyntaxError as e:
+            raise PedroSyntaxError(
+                line, f"invalid interpolation `{{{source}}}`: {e.message}",
+                code="bad-interpolation", col=col,
+                hint="the text inside `{...}` must be a valid Pedro expression") from e
+        return expr
 
     def _parse_operation(self):
         """Keyword-led collection/text/range operations. Returns None if the
