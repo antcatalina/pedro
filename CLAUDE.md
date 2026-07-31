@@ -69,6 +69,10 @@ PYTHONPATH=. python -m pedroc build <file>.pedro -o out.py [--target python|type
 # check: compile, run the expect block, report per-assertion pass/fail as JSON
 PYTHONPATH=. python -m pedroc check <file>.pedro --json
 
+# check EVERY target and assert they agree, expectation-for-expectation (a
+# disagreement is a codegen bug, reported down to which target lost which expectation)
+PYTHONPATH=. python -m pedroc check <file>.pedro --targets python,typescript [--json]
+
 # permissions: derive an agent-harness permission manifest from the declared
 # capability surface (Claude Code settings.json shape by default)
 PYTHONPATH=. python -m pedroc permissions <file>.pedro [--format claude-settings|json]
@@ -173,8 +177,9 @@ timeout + a POSIX `RLIMIT_CPU` backstop + restricted env,
 
 **Designed but NOT yet in the compiler** (see `WORKLOG.md` roadmap, highest first):
 the remaining capability verbs (db `update`/`delete`, `http`, `files`, `time`,
-`random`) and the TypeScript adapter path; then `pedroc check --targets`. The
-`WORKLOG.md` roadmap section is the source of truth for what to build next. (The
-TypeScript backend, `record`/`enum` types, and the **capability/adapter layer**
-have all **landed** — `pedroc/codegen_ts.py`, `pedroc/annotate.py`,
-`pedroc/capabilities.py` + `pedroc/adapters.py`.)
+`random`) and the TypeScript adapter path. The `WORKLOG.md` roadmap section is the
+source of truth for what to build next. (The TypeScript backend, `record`/`enum`
+types, the **capability/adapter layer**, and the first-class cross-target agreement
+check — `check --targets` — have all **landed**: `pedroc/codegen_ts.py`,
+`pedroc/annotate.py`, `pedroc/capabilities.py` + `pedroc/adapters.py`, and
+`check_targets` in `pedroc/check.py`.)

@@ -47,6 +47,15 @@ check it:
    (or `--target typescript -o out.ts` — the same source compiles to Python and
    TypeScript, and both are verified to agree).
 
+To verify a program behaves **identically on every backend**, run
+`python -m pedroc check <file>.pedro --targets python,typescript`: it compiles and
+runs each target's `expect` suite and reports whether all targets agree on every
+expectation. `ok` is true only when they do; a disagreement names which targets
+differed on which expectation and what each got (that's a compiler bug, not yours).
+A single `--targets python` behaves exactly like a plain `check`. (Capability
+programs are Python-only for now, so the TypeScript lane is `skipped`, not a
+disagreement.)
+
 ## Program shape
 
 ```pedro

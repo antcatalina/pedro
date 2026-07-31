@@ -9,11 +9,12 @@ import os
 import sys
 
 from . import compile_source, PedroSyntaxError, PedroTypeError, PedroCapabilityError
-from .check import check
+from .check import check, check_targets
 from .permissions import render as render_permissions
 
 BUILD_USAGE = "usage: python -m pedroc build <file.pedro> [-o <out.py>] [--target python]"
-CHECK_USAGE = "usage: python -m pedroc check <file.pedro> [--json] [--target python]"
+CHECK_USAGE = ("usage: python -m pedroc check <file.pedro> [--json] "
+               "[--target python | --targets python,typescript]")
 PERMS_USAGE = "usage: python -m pedroc permissions <file.pedro> [--format claude-settings|json]"
 USAGE = BUILD_USAGE + "\n" + CHECK_USAGE + "\n" + PERMS_USAGE
 
@@ -68,6 +69,7 @@ def _cmd_check(args):
     infile = args[0]
     as_json = False
     target = "python"
+    targets = None
     i = 1
     while i < len(args):
         if args[i] == "--json":
@@ -75,6 +77,9 @@ def _cmd_check(args):
             i += 1
         elif args[i] == "--target" and i + 1 < len(args):
             target = args[i + 1]
+            i += 2
+        elif args[i] == "--targets" and i + 1 < len(args):
+            targets = [t.strip() for t in args[i + 1].split(",") if t.strip()]
             i += 2
         else:
             print(f"unknown or incomplete argument: {args[i]}", file=sys.stderr)
@@ -84,6 +89,28 @@ def _cmd_check(args):
     except OSError as e:
         print(f"error: {e}", file=sys.stderr)
         return 1
+
+    if targets is not None:
+        for t in targets:
+            if t not in ("python", "typescript"):
+                print(f"unknown target {t!r}: expected 'python' or 'typescript'",
+                      file=sys.stderr)
+                return 2
+        if not targets:
+            print("--targets needs at least one target", file=sys.stderr)
+            return 2
+        targets = list(dict.fromkeys(targets))  # dedupe, preserve order
+        # A single target behaves exactly like today's `check --target <t>`.
+        if len(targets) == 1:
+            target = targets[0]
+        else:
+            report = check_targets(source, filename=os.path.basename(infile), targets=targets)
+            if as_json:
+                print(json.dumps(report, separators=(",", ":")))
+            else:
+                _print_targets_human(report)
+            return 0 if report["ok"] else 1
+
     report = check(source, filename=os.path.basename(infile), target=target)
     if as_json:
         # Compact on purpose: this is read inside a model's context window.
@@ -145,6 +172,50 @@ def _print_human(report):
         if not exp["passed"] and exp["detail"]:
             line += f"   ({exp['detail']})"
         print(line)
+    print("  => ok" if report["ok"] else "  => not ok")
+
+
+def _print_targets_human(report):
+    print(f"{report['file']}: {report['summary']}")
+    for err in report["errors"]:
+        loc = f"line {err['line']}" if err.get("col") is None else f"line {err['line']}:{err['col']}"
+        print(f"  error [{err['code']}] {loc}: {err['message']}")
+    for hole in report["holes"]:
+        print(f"  hole  line {hole['line']}: {hole['message']}")
+    for t in report["targets"]:
+        r = report["results"][t]
+        if not r["ran"]:
+            why = r.get("skipped") or r.get("error") or r.get("status") or "not run"
+            print(f"  [{t}] not run: {why}")
+            continue
+        state = "ok" if r["ok"] else (r.get("status") or "fail")
+        if r["expectations"]:
+            n = len(r["expectations"])
+            n_pass = sum(1 for x in r["expectations"] if x["passed"])
+            print(f"  [{t}] {n_pass}/{n} passed ({state})")
+        else:  # coarse lane: whole-program pass/fail only
+            verdict = "ran green" if r["ok"] else f"failed: {r.get('error')}"
+            print(f"  [{t}] {verdict} (whole-program)")
+    if report["disagreements"]:
+        print("  DISAGREEMENTS (a codegen bug — targets must agree):")
+        for d in report["disagreements"]:
+            if d["kind"] == "expectation-count":
+                counts = ", ".join(f"{k}={v}" for k, v in d["counts"].items())
+                print(f"    - expectation count differs: {counts}")
+            elif d["kind"] == "program":
+                print(f"    - {d['detail']}:")
+                for t, got in d["results"].items():
+                    extra = ""
+                    if got.get("failed"):
+                        extra = f" failed={got['failed']}"
+                    elif got.get("error"):
+                        extra = f" error={got['error']!r}"
+                    print(f"        {t}: ok={got['ok']}{extra}")
+            else:
+                print(f"    - #{d['index']} {d['expectation']!r}:")
+                for t, got in d["results"].items():
+                    detail = f" ({got['detail']})" if got.get("detail") else ""
+                    print(f"        {t}: passed={got['passed']}{detail}")
     print("  => ok" if report["ok"] else "  => not ok")
 
 

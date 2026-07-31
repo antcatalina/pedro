@@ -209,6 +209,176 @@ def check(source, filename="<pedro>", target="python", timeout=DEFAULT_TIMEOUT,
     return report
 
 
+def check_targets(source, filename="<pedro>", targets=("python", "typescript"),
+                  timeout=DEFAULT_TIMEOUT):
+    """Compile the program to EVERY listed target, run each target's expect suite,
+    and report whether all targets AGREE on every expectation.
+
+    This is `tools/differential.py`'s cross-backend agreement check, promoted into a
+    first-class, user-facing guarantee: one source, many verified targets. If two
+    targets disagree on a single expectation, one of them has a codegen bug, and the
+    returned report names WHICH targets disagreed on WHICH expectation and what each
+    got — a compiler bug report, treated with the same rigor as a check failure.
+
+    Reuses `tools/backends.py`'s per-backend run/report adapter (the same runners
+    the differential tester and fuzzer trust) rather than duplicating it. A
+    capability program runs Python-only for now (the TS backend has no adapter path
+    yet); the TypeScript lane is reported as `skipped` for it, not a disagreement.
+    """
+    # Lazy import: `tools.backends` imports `pedroc.check` at module load, so a
+    # top-level import here would be circular. Add the repo root to `sys.path` so
+    # this works regardless of the cwd `pedroc` was invoked from.
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    if root not in sys.path:
+        sys.path.insert(0, root)
+    from tools.backends import run_typescript, ts_available, _normalize
+
+    targets = list(dict.fromkeys(targets))  # dedupe, preserve order
+    report = {
+        "ok": False,
+        "file": filename,
+        "targets": targets,
+        "capabilities": [],
+        "errors": [],
+        "holes": [],
+        "results": {},         # target -> normalized run result
+        "agree": True,
+        "disagreements": [],
+        "summary": "",
+    }
+
+    # The canonical Python `check` gives us the shared static surface (syntax/name/
+    # type/capability errors, holes, declared capabilities) once for all targets.
+    base = check(source, filename=filename, target="python", timeout=timeout)
+    report["capabilities"] = base["capabilities"]
+    report["errors"] = base["errors"]
+    report["holes"] = base["holes"]
+
+    # A compile-level failure is identical across every target — nothing to diff.
+    if base["errors"]:
+        report["agree"] = None
+        report["summary"] = base["summary"]
+        for t in targets:
+            report["results"][t] = {"ran": False, "status": None, "ok": False,
+                                    "expectations": [], "error": base["summary"]}
+        return report
+
+    has_caps = bool(base["capabilities"])
+    for t in targets:
+        if t == "python":
+            report["results"]["python"] = _normalize(base)
+        elif t == "typescript":
+            if has_caps:
+                report["results"]["typescript"] = {
+                    "ran": False, "status": "skipped", "ok": True, "expectations": [],
+                    "error": None,
+                    "skipped": "capabilities are Python-only in the TypeScript backend"}
+            elif not ts_available():
+                report["results"]["typescript"] = {
+                    "ran": False, "status": "unavailable", "ok": False, "expectations": [],
+                    "error": "the TypeScript backend requires `node` on PATH"}
+            else:
+                report["results"]["typescript"] = run_typescript(
+                    source, filename=filename, timeout=timeout)
+        else:
+            report["results"][t] = {"ran": False, "status": "unknown-target", "ok": False,
+                                    "expectations": [], "error": f"unknown target {t!r}"}
+
+    _diff_targets(report, targets)
+
+    ran = [t for t in targets if report["results"][t]["ran"]]
+    all_ran_ok = all(report["results"][t]["ok"] for t in ran)
+    any_unavailable = any(report["results"][t].get("status") == "unavailable"
+                          for t in targets)
+    report["ok"] = (report["agree"] is not False and all_ran_ok
+                    and not any_unavailable and not base["holes"])
+
+    report["summary"] = _targets_summary(report, targets, ran)
+    return report
+
+
+def _diff_targets(report, targets):
+    """Compare the ran targets' results and fill `agree`/`disagreements`. Any
+    divergence is a codegen bug, recorded with what each target got.
+
+    Backends report at two granularities. The Python lane emits a per-expectation
+    pass/fail record for each assertion. The TypeScript lane currently prints only a
+    whole-program pass/fail (its expect block throws on the first failed assertion),
+    so its `expectations` list is empty — a COARSE lane. We compare a coarse lane at
+    the whole-program level (`ok` vs `ok`) and a per-expectation lane position by
+    position, so a coarse lane never produces a spurious count mismatch. If the TS
+    backend ever grows per-expectation records, the finer comparison lights up
+    automatically."""
+    ran = [t for t in targets if report["results"][t]["ran"]]
+    if len(ran) < 2:
+        # Nothing to cross-check (e.g. TS skipped for a capability program). One
+        # green lane can't contradict itself, so agreement is vacuously true.
+        report["agree"] = True if ran else None
+        return
+
+    # Reference lane = the first ran lane that reports per-expectation detail
+    # (Python always does); every other lane is compared against it.
+    detailed = [t for t in ran if report["results"][t]["expectations"]]
+    ref = detailed[0] if detailed else ran[0]
+    ref_res = report["results"][ref]
+
+    for t in ran:
+        if t == ref:
+            continue
+        r = report["results"][t]
+        if r["expectations"]:
+            _diff_per_expectation(report, ref, t)
+        elif ref_res["ok"] != r["ok"]:
+            # Coarse lane: it agrees or disagrees on the whole-program verdict only.
+            report["agree"] = False
+            report["disagreements"].append({
+                "kind": "program",
+                "detail": f"{ref} and {t} disagree on the overall result",
+                "results": {
+                    ref: {"ok": ref_res["ok"],
+                          "failed": [e["text"] for e in ref_res["expectations"]
+                                     if not e["passed"]]},
+                    t: {"ok": r["ok"], "error": r.get("error")},
+                }})
+
+
+def _diff_per_expectation(report, ref, t):
+    """Compare two per-expectation lanes position by position."""
+    a = report["results"][ref]["expectations"]
+    b = report["results"][t]["expectations"]
+    if len(a) != len(b):
+        report["agree"] = False
+        report["disagreements"].append({
+            "kind": "expectation-count", "counts": {ref: len(a), t: len(b)},
+            "detail": "targets produced different numbers of expectations"})
+    for i in range(min(len(a), len(b))):
+        if bool(a[i]["passed"]) != bool(b[i]["passed"]):
+            report["agree"] = False
+            report["disagreements"].append({
+                "kind": "expectation", "index": i, "expectation": a[i]["text"],
+                "results": {
+                    ref: {"passed": bool(a[i]["passed"]), "detail": a[i].get("detail")},
+                    t: {"passed": bool(b[i]["passed"]), "detail": b[i].get("detail")}}})
+
+
+def _targets_summary(report, targets, ran):
+    if report["agree"] is False:
+        return (f"targets DISAGREE — {len(report['disagreements'])} difference(s) "
+                f"across {', '.join(ran)}; this is a compiler bug")
+    lanes = ", ".join(ran)
+    n = len(report["results"][ran[0]]["expectations"]) if ran else 0
+    unavailable = [t for t in targets
+                   if report["results"][t].get("status") == "unavailable"]
+    if unavailable:
+        return f"could not verify agreement — target(s) unavailable: {', '.join(unavailable)}"
+    if report["ok"]:
+        note = "" if len(ran) > 1 else " (single lane — nothing to cross-check)"
+        return f"all targets agree — {lanes} green on {n}/{n} expectations{note}"
+    if report["holes"]:
+        return f"{lanes} agree but {len(report['holes'])} unresolved hole(s)"
+    return f"{lanes} agree but not all expectations pass"
+
+
 def _build_steps(program):
     """Render each expect item to the pre-computed strings the sandboxed runner
     needs, so the child process needs no pedroc imports. Order is preserved so a

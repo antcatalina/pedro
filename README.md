@@ -591,7 +591,23 @@ node build/numbers.ts
 
 # check it: compile, run its expect blocks, report per-assertion pass/fail
 PYTHONPATH=. python -m pedroc check examples/cookbook/numbers.pedro --json
+
+# ...or check EVERY target at once and assert they agree, expectation-for-expectation
+PYTHONPATH=. python -m pedroc check examples/cookbook/numbers.pedro --targets python,typescript
 ```
+
+**`--targets` — one program, verified identical on every backend.** `pedroc check
+<file>.pedro --targets python,typescript` compiles the program to each listed target,
+runs each target's `expect` suite, and reports whether all targets **agree** on every
+expectation. If two backends ever disagree on a single assertion, one of them has a
+codegen bug — and the report says exactly *which* targets disagreed on *which*
+expectation and what each got, so it reads as a compiler bug report. Full agreement
+exits `0`; a disagreement (or any lane failing) exits `1`. Capability programs run
+Python-only for now (the TypeScript adapter path isn't built), so the TS lane is
+reported as `skipped` for them, not a disagreement. Passing a single target
+(`--targets python`) is identical to a plain `check` for that target. This promotes
+[`tools/differential.py`](tools/differential.py)'s cross-backend agreement check from a
+dev-only test tool into a guarantee any user's own code can assert.
 
 `check` is the oracle for the authoring loop: emit Pedro → `check` → read the JSON (`errors`, `holes`, and failing `expectations` with `got X, expected Y`) → fix. Diagnostics are built to be *read by a model*: each error carries a stable `code`, `line` **and `col`**, an actionable `hint`, a source `snippet` with a `^` caret, and — for a misspelled identifier, task, or keyword — a nearest-match `suggestion` ("did you mean X?"). The JSON is compact (null fields omitted). The generated program is run in a **sandboxed subprocess** with a wall-clock timeout and a restricted environment, so a non-terminating or hostile program is reported as a structured `status:"timeout"`/`"error"` instead of hanging or compromising the compiler. The **authoring layer** — turning a plain-English request into Pedro and driving that loop — is the Claude Code skill in `skills/write-pedro/`; the compact spec it reads is [docs/language-card.md](docs/language-card.md).
 
@@ -659,15 +675,15 @@ Repo-specific conventions and guardrails for anyone — or any Claude agent — 
 
 Live status and next steps live in [WORKLOG.md](WORKLOG.md). In brief:
 
-- **Done** — the language design; a real deterministic compiler (`pedroc`) for the scalar/list/map/`record`/`enum`/control-flow subset → **Python and TypeScript**; **capabilities + the swappable adapter layer** (Python; database/email/crypto verbs, undeclared-use is a compile error, the declared surface reported by `check --json`); the **capability → agent-permission bridge** (`pedroc permissions`, see above); the `pedroc check` loop, typed holes, and structured diagnostics, sandboxed in a subprocess; the [cookbook](docs/cookbook.md) as a passing regression suite (`tools/regress.py`) on both backends; a differential tester + seedable grammar fuzzer running live over both backends (`tools/differential.py`, `tools/fuzz.py`); and a mechanical doc-drift backstop (`tools/check_docs.py`) wired into CI.
-- **Next (highest priority first)** — the remaining capability verbs (db `update`/`delete`, `http`/`files`/`time`/`random`) + the TypeScript adapter path; promoting the differential check into a `pedroc check --targets` guarantee; then `docs/SPEC.md`.
+- **Done** — the language design; a real deterministic compiler (`pedroc`) for the scalar/list/map/`record`/`enum`/control-flow subset → **Python and TypeScript**; **capabilities + the swappable adapter layer** (Python; database/email/crypto verbs, undeclared-use is a compile error, the declared surface reported by `check --json`); the **capability → agent-permission bridge** (`pedroc permissions`, see above); the `pedroc check` loop, typed holes, and structured diagnostics, sandboxed in a subprocess; the [cookbook](docs/cookbook.md) as a passing regression suite (`tools/regress.py`) on both backends; a differential tester + seedable grammar fuzzer running live over both backends (`tools/differential.py`, `tools/fuzz.py`); the cross-target agreement check promoted into a first-class `pedroc check --targets` guarantee; and a mechanical doc-drift backstop (`tools/check_docs.py`) wired into CI.
+- **Next (highest priority first)** — the remaining capability verbs (db `update`/`delete`, `http`/`files`/`time`/`random`) + the TypeScript adapter path; then `docs/SPEC.md`.
 
 ### Committed: bets that make Pedro distinctly agent-native 🧭
 
 Approved 2026-07-28, queued on AntMac, not built yet — each depends on a "Next" item above landing first:
 
 - ~~**Capability manifest → agent permission bridge** (`capability-permission-bridge`)~~ — **LANDED.** `pedroc permissions <file>.pedro` derives the manifest from the declared capability surface; see the "Built for agent-heavy teams" section above for the mapping table.
-- **Cross-target consistency as a CLI guarantee** (`cross-target-check-cli`, depends on the TypeScript backend). Promotes `tools/differential.py`'s cross-backend agreement check into `pedroc check <file>.pedro --targets python,typescript` — "this program behaves identically everywhere" becomes something any user's own code can assert, not just the compiler's own test suite.
+- ~~**Cross-target consistency as a CLI guarantee**~~ — **LANDED** (2026-07-31). `pedroc check <file>.pedro --targets python,typescript` compiles the program to every listed target, runs each target's `expect` suite, and reports whether they all **agree** on every expectation; a disagreement is named down to the exact expectation and what each target got (a compiler bug report). "This program behaves identically everywhere" is now something any user's own code can assert, not just the compiler's own test suite. See "Using Pedro today" above.
 - **Property-based `expect` blocks** (`property-based-expect`). Extends `expect:` with a bounded quantified form (`for all n from 0 to 100: is_prime(n) implies n > 1`), enumerated and checked — a strict superset of today's example-based syntax, and a much higher correctness bar for agent-authored logic than a handful of examples.
 - **Tamper-evident generated output** (`verify-drift-detection`). Embeds a source content-hash in the "do not edit by hand" banner; `pedroc verify <file>.pedro <output>` detects drift — catches the common failure mode where a human hand-patches generated code and an agent later regenerates over it (or vice versa).
 

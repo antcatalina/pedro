@@ -15,7 +15,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from pedroc import compile_source
-from pedroc.check import check
+from pedroc.check import check, check_targets, _diff_targets
 from pedroc.suggest import nearest, edit_distance
 from pedroc.permissions import render as render_permissions, permission_manifest, CAPABILITY_RULES
 
@@ -363,6 +363,81 @@ def test_nearest_is_deterministic_and_bounded():
     assert nearest("totallyunrelated", ("x", "y")) is None
     assert edit_distance("kitten", "sitting") == 3
     assert edit_distance("abc", "abc") == 0
+
+
+# --- cross-target agreement (`check --targets`) -----------------------------
+
+_TARGETS_PROG = (
+    "target: python\n\n"
+    "task half(x: whole) returns whole:\n"
+    "    return x div 2\n\n"
+    "expect:\n"
+    "    half(10) == 5\n"
+    "    half(7) == 3\n"
+)
+
+
+def test_check_targets_agrees_on_a_clean_program():
+    report = check_targets(_TARGETS_PROG, filename="<test>",
+                           targets=("python", "typescript"))
+    assert report["agree"] is not False, report["summary"]
+    assert report["disagreements"] == []
+    assert report["results"]["python"]["ok"]
+    # If node is on PATH the TS lane ran green too, so the whole thing is ok; if
+    # not, python still agrees with itself (nothing to cross-check).
+    if report["results"]["typescript"]["ran"]:
+        assert report["ok"], report["summary"]
+
+
+def test_check_targets_single_lane_is_vacuously_ok():
+    # A capability program is Python-only, so the TS lane is skipped, not failed.
+    report = check_targets(_read_signup(), filename="<test>",
+                           targets=("python", "typescript"))
+    assert report["agree"] is not False
+    assert report["disagreements"] == []
+    assert report["results"]["typescript"]["ran"] is False
+    assert report["ok"]
+
+
+def test_diff_targets_flags_per_expectation_disagreement():
+    # Two per-expectation lanes that differ on expectation #1 → a named codegen bug.
+    report = {"targets": ["python", "typescript"], "agree": True, "disagreements": [],
+              "results": {
+                  "python": {"ran": True, "ok": True, "expectations": [
+                      {"text": "a == 1", "passed": True, "detail": None},
+                      {"text": "b == 2", "passed": True, "detail": None}]},
+                  "typescript": {"ran": True, "ok": False, "expectations": [
+                      {"text": "a == 1", "passed": True, "detail": None},
+                      {"text": "b == 2", "passed": False, "detail": "got 3, expected == 2"}]},
+              }}
+    _diff_targets(report, report["targets"])
+    assert report["agree"] is False
+    assert len(report["disagreements"]) == 1
+    d = report["disagreements"][0]
+    assert d["kind"] == "expectation" and d["index"] == 1
+    assert d["expectation"] == "b == 2"
+    assert d["results"]["python"]["passed"] is True
+    assert d["results"]["typescript"]["passed"] is False
+    assert d["results"]["typescript"]["detail"] == "got 3, expected == 2"
+
+
+def test_diff_targets_flags_whole_program_disagreement_for_coarse_lane():
+    # The TS lane reports only a whole-program verdict (empty expectations); a
+    # divergence must still be caught and name what each target got.
+    report = {"targets": ["python", "typescript"], "agree": True, "disagreements": [],
+              "results": {
+                  "python": {"ran": True, "ok": True, "expectations": [
+                      {"text": "a == 1", "passed": True, "detail": None}]},
+                  "typescript": {"ran": True, "ok": False, "expectations": [],
+                                 "error": "expectation failed: a == 1"},
+              }}
+    _diff_targets(report, report["targets"])
+    assert report["agree"] is False
+    d = report["disagreements"][0]
+    assert d["kind"] == "program"
+    assert d["results"]["python"]["ok"] is True
+    assert d["results"]["typescript"]["ok"] is False
+    assert d["results"]["typescript"]["error"] == "expectation failed: a == 1"
 
 
 # --- runner (pytest-free) ---------------------------------------------------

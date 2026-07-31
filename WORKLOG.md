@@ -5,6 +5,76 @@ resume cleanly across sessions.
 
 ---
 
+## 2026-07-31 — `pedroc check --targets` LANDED (cross-target-check-cli, agent-native bet #2)
+
+Promoted `tools/differential.py`'s cross-backend agreement check from a dev-only
+test tool into a **first-class, user-facing pedroc feature**:
+`pedroc check <file>.pedro --targets python,typescript [--json]` compiles the program
+to every listed target, runs each target's `expect` suite, and reports whether all
+targets **agree** on every expectation. A disagreement is a codegen bug, and the
+report treats it with the same rigor as a normal check failure — it names WHICH
+targets disagreed on WHICH expectation and what each got.
+
+**What landed.**
+- **`pedroc/check.py` → `check_targets(source, filename, targets, timeout)`** — the
+  orchestrator. It runs the canonical Python `check` once (for the shared static
+  surface: syntax/name/type/capability errors, holes, declared `capabilities`), then
+  **reuses `tools/backends.py`'s per-backend run/report adapter** (`run_typescript`,
+  `ts_available`, `_normalize` — the exact runners the differential tester + fuzzer
+  trust) rather than duplicating it. Lazy-imports `tools.backends` (adds repo root to
+  `sys.path`) to dodge the circular import, since `tools.backends` imports
+  `pedroc.check` at load. Returns a report: `{targets, agree, ok, capabilities,
+  errors, holes, results:{<target>:…}, disagreements:[…], summary}`.
+- **Two comparison granularities (`_diff_targets`/`_diff_per_expectation`).** The
+  Python lane emits a per-expectation pass/fail record for each assertion; the TS lane
+  currently prints only a **whole-program** verdict (its expect block throws on the
+  first failed assertion → empty `expectations`). So a coarse lane is compared at the
+  `ok`-vs-`ok` level (kind `"program"`, carrying python's failing expectations + the
+  TS error string) and a per-expectation lane position-by-position (kind
+  `"expectation"`, naming index + text + each target's passed/detail; kind
+  `"expectation-count"` on a length mismatch). This means a coarse lane never
+  produces a spurious count mismatch, and if the TS backend ever grows per-expectation
+  records the finer diff lights up automatically.
+- **Capability programs run Python-only** (no TS adapter path yet): the TS lane is
+  reported `skipped`, NOT a disagreement — mirrors `differential.py`, but keyed off
+  the actual declared `capabilities` surface rather than a `"use capability"` string
+  match. `ts_available()` False → TS lane `unavailable` → clear "could not verify"
+  summary + non-`ok`.
+- **`pedroc/__main__.py`.** New `--targets a,b` flag on `check` (validated to
+  python/typescript, deduped). **A single target behaves exactly like today's `check
+  --target <t>`** (verified byte-identical: `--targets python --json` diffs clean
+  against plain `check --json`), so existing callers are untouched. `--json` prints
+  the compact multi-target report; the human printer names each lane's result and,
+  on disagreement, prints the offending expectation and what each target got. Exit 0
+  iff all targets agree AND every ran lane is green.
+
+**Proof (the task's "PROVE IT").** `--targets python,typescript` across the whole
+cookbook (12 files) → full agreement, every file exit 0 (2 capability files run
+Python-only, TS skipped). Then injected a one-target codegen bug (mirroring
+`tools/fuzz.py`'s validation trick — flipped TS `div` from `Math.floor` to
+`Math.ceil` in `codegen_ts.py`): `--targets` caught it, reporting
+`agree:false` + a `program`-kind disagreement (`python: ok=True` / `typescript:
+ok=False`), exit 1. Reverted; corpus back to full agreement.
+
+**Tests** (`tests/test_diagnostics.py`, now 40/40): end-to-end agreement on a clean
+`div` program (guards TS specifics behind `ts_available`), a capability program's
+vacuous single-lane agreement, and two deterministic node-free `_diff_targets` unit
+tests — a per-expectation disagreement (asserts index/text/both-sides detail) and a
+whole-program coarse-lane disagreement (asserts the `program` record carries python's
+failed list + the TS error).
+
+**Docs.** README "Using Pedro today" gains a `--targets` run example + a full
+paragraph; the committed-bet "Cross-target consistency as a CLI guarantee" is marked
+LANDED and the Done/Next roadmap lines updated. `docs/language-card.md` documents the
+flag in the authoring loop. CLAUDE.md "How to run" + coverage updated. `check_docs.py`
+clean; full `python tools/regress.py --slow` green (73 corpus + 10/10 TS + 40
+diagnostic + 6 sandbox + 200-program fuzz + corpus differential + doc-drift clean).
+
+**Next:** unchanged from the roadmap below — the remaining capability verbs (db
+`update`/`delete`, `http`, `files`, `time`, `random`) and the TS adapter path (which
+would also let the TS lane emit per-expectation records, sharpening `--targets`'
+disagreement reporting from whole-program to per-assertion for capability-free code).
+
 ## 2026-07-31 — Fuzzer grammar expansion → found + fixed two cross-backend bugs
 
 The assigned job was the cross-backend correctness harness (differential tester +
