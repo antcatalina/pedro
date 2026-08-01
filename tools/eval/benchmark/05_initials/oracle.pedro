@@ -1,0 +1,5 @@
+expect:
+    initials("Ada Lovelace") == "AL"
+    initials("Grace Brewster Hopper") == "GBH"
+    initials("Plato") == "P"
+    initials("Edsger Wybe Dijkstra") == "EWD"

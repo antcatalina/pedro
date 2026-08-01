@@ -108,6 +108,21 @@ def main(argv=None):
     if not run_sandbox_tests():
         all_ok = False
 
+    # ...and the LLM-authoring benchmark's self-test: every task's reference
+    # solution must satisfy its hidden oracle (proves each oracle is satisfiable
+    # and the scorer wiring is sound — see tools/eval/).
+    from tools.eval.scorer import self_test as eval_self_test
+    print()
+    eval_ok, eval_results = eval_self_test()
+    n_ok = sum(1 for r in eval_results if r["ok"])
+    for r in eval_results:
+        if not r["ok"]:
+            print(f"[FAIL] eval/{r['id']} — {r['summary']}")
+    print(f"{'PASS' if eval_ok else 'FAIL'}: eval benchmark self-test "
+          f"({n_ok}/{len(eval_results)} reference solutions satisfy their hidden oracle)")
+    if not eval_ok:
+        all_ok = False
+
     # Doc-drift backstop (CLAUDE.md ground rule 6). Clearly separated + labelled.
     # NON-FATAL by default (new heuristic — false positives possible); prints loudly
     # if it finds anything. `--strict-docs` promotes HIGH findings to a failure.

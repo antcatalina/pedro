@@ -1,0 +1,8 @@
+target: python
+
+task is_leap_year(year: whole) returns flag:
+    when year mod 400 is 0:
+        return true
+    when year mod 100 is 0:
+        return false
+    return year mod 4 is 0

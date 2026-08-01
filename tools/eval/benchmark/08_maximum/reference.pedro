@@ -1,0 +1,10 @@
+target: python
+
+task maximum(xs: list of whole) returns whole:
+    when xs is empty:
+        fail with "empty list"
+    let best = first of xs
+    for each v in xs:
+        when v is greater than best:
+            best = v
+    return best

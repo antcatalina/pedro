@@ -1,0 +1,4 @@
+target: python
+
+task sum_list(xs: list of whole) returns whole:
+    return sum of v for each v in xs

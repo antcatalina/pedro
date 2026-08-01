@@ -662,8 +662,24 @@ pedro/
     ├── backends.py           # per-backend "run + report expectations" adapter
     ├── differential.py       # runs each corpus program on every backend, asserts agreement
     ├── fuzz.py               # seedable grammar fuzzer with a reference oracle
-    └── check_docs.py         # doc-drift backstop: compiler's real construct surface vs. doc claims
+    ├── check_docs.py         # doc-drift backstop: compiler's real construct surface vs. doc claims
+    └── eval/                 # the LLM-authoring benchmark: score how reliably a model writes correct Pedro
+        ├── scorer.py         #   splice candidate .pedro onto a hidden `expect:` oracle, run `check`
+        ├── __main__.py       #   CLI: list / spec / score / run / selftest  (no API key)
+        └── benchmark/<id>/   #   spec.md (shown) + oracle.pedro (hidden) + reference.pedro
 ```
+
+**Is Pedro really "the go-to language for LLMs"? Measure it.** `tools/eval/` is a
+benchmark that scores how reliably a model authors *correct* Pedro. Each task pairs a
+natural-language `spec.md` (with the exact required signature) to a **hidden**
+`expect:` oracle; the scorer splices a candidate `.pedro` onto that oracle, runs
+`pedroc check`, and reports pass/fail plus the structured failure detail — the exact
+signal a model self-corrects from in the NL → Pedro → `check` → fix loop. It needs
+**no API key** (it scores provided files); ~10 seeded tasks span arithmetic, strings,
+lists, and small algorithms. Run `PYTHONPATH=. python -m tools.eval list` /
+`… run <solutions_dir>`; its reference solutions are self-tested green inside
+`tools/regress.py`. See [`tools/eval/README.md`](tools/eval/README.md) for the loop
+and how to wire a live model call.
 
 The correctness harness is kept off the default fast path: `python tools/regress.py`
 runs both backends over the corpus plus a tiny fuzz smoke, while `--fuzz`, `--diff`,

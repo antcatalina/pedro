@@ -1,0 +1,6 @@
+target: python
+
+task abs_diff(a: whole, b: whole) returns whole:
+    when a is at least b:
+        return a - b
+    return b - a

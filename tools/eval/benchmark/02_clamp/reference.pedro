@@ -1,0 +1,8 @@
+target: python
+
+task clamp(x: whole, low: whole, high: whole) returns whole:
+    when x is less than low:
+        return low
+    when x is greater than high:
+        return high
+    return x

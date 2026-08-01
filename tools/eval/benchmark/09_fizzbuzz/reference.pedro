@@ -1,0 +1,10 @@
+target: python
+
+task fizzbuzz(n: whole) returns text:
+    when n mod 15 is 0:
+        return "FizzBuzz"
+    when n mod 3 is 0:
+        return "Fizz"
+    when n mod 5 is 0:
+        return "Buzz"
+    return n as text

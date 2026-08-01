@@ -1,0 +1,8 @@
+target: python
+
+task initials(full_name: text) returns text:
+    let result = ""
+    for each word in split full_name by " ":
+        let letters = characters of word
+        result = result followed by first of letters
+    return result

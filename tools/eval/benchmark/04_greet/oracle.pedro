@@ -1,0 +1,4 @@
+expect:
+    greet("Ada") == "Hello, Ada!"
+    greet("World") == "Hello, World!"
+    greet("Grace Hopper") == "Hello, Grace Hopper!"

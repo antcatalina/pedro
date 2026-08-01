@@ -1,0 +1,8 @@
+target: python
+
+task gcd(a: whole, b: whole) returns whole:
+    while b is not 0:
+        let temp = b
+        b = a mod b
+        a = temp
+    return a

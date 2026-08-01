@@ -1,0 +1,4 @@
+target: python
+
+task greet(name: text) returns text:
+    return "Hello, {name}!"

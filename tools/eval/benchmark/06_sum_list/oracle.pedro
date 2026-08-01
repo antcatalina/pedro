@@ -1,0 +1,7 @@
+expect:
+    sum_list([1, 2, 3, 4]) == 10
+    sum_list([]) == 0
+    sum_list([42]) == 42
+    sum_list([5, 10, 15]) == 30
+    given nums = [7, 8, 9]
+    sum_list(nums) == 24

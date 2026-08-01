@@ -53,6 +53,12 @@ structured feedback — so the language must stay small, regular, and verifiable
   PATH — capability programs are Python-only until the TS adapter path lands).
 - `tools/fuzz.py` — seedable grammar fuzzer with a reference oracle; generates valid
   self-checking Pedro and asserts every backend agrees.
+- `tools/eval/` — the **LLM-authoring benchmark** (makes the "go-to language for LLMs"
+  claim measurable): `scorer.py` splices a candidate `.pedro` onto a task's HIDDEN
+  `expect:` oracle and runs `pedroc check`; `benchmark/<id>/` holds `spec.md` (shown to
+  the model) + `oracle.pedro` (hidden) + `reference.pedro` (self-tests the harness);
+  `__main__.py` is the CLI (`list`/`spec`/`score`/`run`/`selftest`, no API key). The
+  reference solutions are self-tested green inside `regress.py`. See `tools/eval/README.md`.
 - `tools/check_docs.py` — doc-drift backstop (ground rule 6): extracts pedroc's real
   construct surface from `parser.py`/`codegen_python.py` and flags any construct the
   compiler implements that a doc marks "NOT yet supported"/🧭 (and, low-confidence, the
@@ -76,6 +82,11 @@ PYTHONPATH=. python -m pedroc check <file>.pedro --targets python,typescript [--
 # permissions: derive an agent-harness permission manifest from the declared
 # capability surface (Claude Code settings.json shape by default)
 PYTHONPATH=. python -m pedroc permissions <file>.pedro [--format claude-settings|json]
+
+# LLM-authoring benchmark: score how reliably a model writes correct Pedro (no API key)
+PYTHONPATH=. python -m tools.eval list                       # the seeded tasks
+PYTHONPATH=. python -m tools.eval score <id> <candidate>.pedro   # grade one solution
+PYTHONPATH=. python -m tools.eval run <solutions_dir>        # grade a whole run
 
 # regression / CI (must stay green)
 python tools/regress.py

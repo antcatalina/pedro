@@ -1,0 +1,5 @@
+target: python
+
+task count_even(xs: list of whole) returns whole:
+    let evens = filter v in xs where v mod 2 is 0
+    return count of evens

@@ -5,6 +5,71 @@ resume cleanly across sessions.
 
 ---
 
+## 2026-08-01 — LLM-authoring benchmark LANDED (`tools/eval/` — the "go-to language for LLMs" claim, made MEASURABLE)
+
+Pedro's central claim is that it is the go-to *intent* language for LLMs. Until now
+that was prose. `tools/eval/` turns it into a number: **how reliably does a model
+author correct Pedro from a natural-language spec?** — scored deterministically with
+`pedroc check` as the ground-truth oracle, and with **no API key** required (the
+harness scores provided `.pedro` files; a live model call is a thin opt-in layer,
+documented below).
+
+**The design — hidden oracles.** Each benchmark task lives in
+`tools/eval/benchmark/<id>/`:
+- `spec.md` — the natural-language prompt, INCLUDING the exact required task
+  signature (`task name(params) returns type`) so the hidden oracle can call the
+  solution. This is the only thing a model sees.
+- `oracle.pedro` — the HIDDEN grader oracle: an `expect:` block of concrete cases
+  (several also use property-based `for all n from a to b` so a solution must be
+  right across a whole range, not just the listed examples). The model never sees it.
+- `reference.pedro` — a known-good solution, used to self-test the harness.
+
+**The scorer** (`tools/eval/scorer.py`). Grading is exact and mechanical: take the
+candidate's task definitions, DROP any `target:`/`expect:` lines it wrote itself (a
+model's own tests never count — only the hidden oracle does), splice on
+`oracle.pedro`, and run `check`. The returned report — per-expectation `passed` +
+`detail` (`got X, expected Y`, `counterexample: n=…`), `errors` (code/line:col/hint/
+suggestion), `holes`, abnormal `status` — is exactly the signal a model self-corrects
+from. `grade`, `score_solutions` (aggregate: **tasks fully correct / total**), and
+`self_test` (grade every reference) are the public surface a future model-driver reuses.
+
+**The CLI** (`python -m tools.eval`): `list` (the tasks), `spec <id>` (print a task's
+prompt), `score <id> <candidate>.pedro [--json]` (grade one), `run <solutions_dir>
+[--json]` (grade a whole run — expects `<id>.pedro` per task; a missing file scores 0),
+`selftest [--json]` (grade all references). `score`/`run` exit non-zero unless every
+hidden expectation passes.
+
+**Seeded corpus — 10 tasks, 56 hidden expectations**, spanning arithmetic
+(`abs_diff`, `clamp`, `is_leap_year`), strings (`greet`, `initials`), lists
+(`sum_list`, `count_even`, `maximum` — which must `fail with "empty list"`), and small
+algorithms (`fizzbuzz`, `gcd`). Verified: every reference scores `ok`; a deliberately
+wrong `abs_diff` (subtraction only) is caught with `got -4, expected == 4` AND the
+property counterexample `n=1, got false`; a signature syntax error surfaces
+`unexpected-token` with line:col + hint. The candidate's own `expect:` block is
+correctly stripped (its passing-looking test never leaks into the score).
+
+**Wired into CI.** `tools/regress.py` now runs the benchmark self-test as a
+non-negotiable lane: all 10 reference solutions must satisfy their hidden oracles, so
+the benchmark can't silently rot (an unsatisfiable oracle or broken splice fails CI).
+`python tools/regress.py` stays fully green (corpus + TS lane + 45 diagnostics + 6
+sandbox + eval self-test + fuzz + doc-drift). Docs updated: `README.md` (repo layout +
+a "measure it" callout), `CLAUDE.md` (where-things-are + how-to-run), and a dedicated
+`tools/eval/README.md` documenting the NL → Pedro → check → fix loop.
+
+**Next — close the loop with a live model.** The harness stops at scoring provided
+files on purpose (deterministic, offline). To measure a real model, add a driver
+OUTSIDE the package (e.g. `tools/eval/drivers/anthropic_driver.py`) that per task:
+(1) prompts the model with `spec.md` + `docs/language-card.md`; (2) writes the reply
+to `solutions/<id>.pedro`; (3) `scorer.grade(...)`; (4) on not-`ok`, feeds the
+structured JSON back and re-prompts up to *k* rounds, recording rounds-to-green (the
+real self-correction-convergence metric); (5) `scorer.score_solutions(...)` for the
+scorecard. Keep the API key + network confined to that driver so
+`python -m tools.eval` and `tools/regress.py` stay offline. `tools/eval/README.md`
+spells this out. Also easy to grow: more tasks (records/enums, `match`, capabilities),
+and a difficulty/coverage tag per task.
+
+---
+
 ## 2026-08-01 — Property-based `expect` LANDED (`for all n from a to b`, agent-native bet #3)
 
 Turned the 🧭 `property-based-expect` bet into a real, documented feature. An
