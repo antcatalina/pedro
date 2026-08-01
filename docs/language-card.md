@@ -126,6 +126,28 @@ expect:
   (first match or `nothing`)
 - calls: `factorial(n - 1)` — recursion is fine
 
+## Expectations (the `expect:` block)
+
+Each line is one expectation, checked by running the program:
+
+- `<expr>` — a flag expression that must be `true` (e.g. `factorial(5) == 120`).
+- `<call> fails with "<message>"` — the call must raise that exact `fail with` message.
+- `given <name> = <expr>` — bind a value visible to later expectations.
+- `given <table> is empty` — reset a table before the expectations run.
+- `for all <name> from <a> to <b>: <expr>` — a **property**: the flag expression
+  must hold for EVERY integer `<name>` in the inclusive range `[a, b]`. `check`
+  proves it by brute force — it enumerates the range and evaluates the property at
+  each value; the first failing value is reported as
+  `counterexample: <name>=<v>, got false`. This is honest enumeration, not a
+  theorem prover, so keep ranges bounded: a range wider than **10000** values is
+  refused (raise it with `check --forall-cap N`). Example:
+
+  ```pedro
+  expect:
+      for all n from 1 to 100: is_even(double(n))   # a proven property
+      for all n from 2 to 50: count_factors(n) is at least 2
+  ```
+
 ## Records & enums (supported)
 
 Declare data types at the top level, alongside tasks:

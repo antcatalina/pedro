@@ -172,6 +172,13 @@ def _gen_expect_item(item):
         return [f"    {item[1]} = {_gen_expr(item[2])}"]
     if kind == "given-empty":
         return [f"    {item[1]}.clear()"]
+    if kind == "forall":
+        name, lo, hi, body = item[1], item[2], item[3], item[4]
+        return [
+            f"    for {name} in range({_gen_expr(lo)}, ({_gen_expr(hi)}) + 1):",
+            f"        assert ({_gen_expr(body)}), "
+            f'f"counterexample: {name}={{{name}}}, got false"',
+        ]
     if kind == "assert":
         return [f"    assert {_gen_expr(item[1])}"]
     if kind == "fails":

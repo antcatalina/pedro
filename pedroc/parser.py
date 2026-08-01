@@ -241,6 +241,21 @@ class Parser:
                     self._expect("NAME", "is")
                     self._expect("NAME", "empty")
                     items.append(("given-empty", name))
+            elif self._is_name("for"):
+                # Property-based expectation: `for all <name> from <a> to <b>: <expr>`.
+                # Quantifies a flag-valued property over the inclusive integer range;
+                # `check` enumerates it and reports the first counterexample. A strict
+                # superset of the example-based lines above.
+                self._advance()
+                self._expect("NAME", "all")
+                name = self._expect("NAME")[1]
+                self._expect("NAME", "from")
+                lo = self._parse_add()
+                self._expect("NAME", "to")
+                hi = self._parse_add()
+                self._expect("OP", ":")
+                body = self._parse_expr()
+                items.append(("forall", name, lo, hi, body))
             else:
                 expr = self._parse_expr()
                 if self._is_name("fails"):

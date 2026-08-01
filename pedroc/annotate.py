@@ -170,7 +170,11 @@ def annotate(program):
             for item in it.items:
                 # ("given", name, expr) | ("given-empty", table)
                 # | ("assert", expr) | ("fails", expr, msg)
+                # | ("forall", name, lo, hi, body)
                 if item[0] == "given-empty":
+                    continue
+                if item[0] == "forall":
+                    visit(item[2], None); visit(item[3], None); visit(item[4], None)
                     continue
                 visit(item[2] if item[0] == "given" else item[1], None)
 

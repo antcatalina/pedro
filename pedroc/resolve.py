@@ -120,6 +120,13 @@ def resolve(program):
                     pass  # the table name is a global; nothing new binds
                 elif item[0] == "assert":
                     check_expr(item[1], env)
+                elif item[0] == "forall":
+                    # `for all <name> from <lo> to <hi>: <body>` — the bounds see
+                    # the surrounding scope; the body additionally binds <name>.
+                    _name, lo, hi, body = item[1], item[2], item[3], item[4]
+                    check_expr(lo, env)
+                    check_expr(hi, env)
+                    check_expr(body, env | {_name})
                 else:  # fails
                     check_expr(item[1], env)
     return errors

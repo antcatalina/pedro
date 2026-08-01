@@ -538,6 +538,29 @@ expect:
     sign_up("not-an-email", "x") fails with "invalid email"
 ```
 
+**Property-based expectations — implemented.** Beyond concrete examples, an
+`expect:` block can assert a **property** that must hold across a whole bounded
+range, with `for all <name> from <a> to <b>: <flag expression>`. It is a strict
+superset of the example-based form (existing blocks are unchanged). Pedro is not a
+theorem prover: `pedroc check` **enumerates** the inclusive integer range and
+evaluates the property at every value, reporting the first failing one as
+`counterexample: <name>=<v>, got false`. Ranges stay bounded (a range wider than
+**10000** values is refused — raise it with `pedroc check --forall-cap N`), and the
+property is checked identically on **both** the Python and TypeScript backends.
+
+```pedro
+task double(n: whole) returns whole:
+    return n + n
+
+expect:
+    for all n from 0 to 200: double(n) mod 2 == 0     # a proven property
+    for all n from 0 to 50: count of sort numbers from 1 to n == n
+```
+
+A deliberately wrong implementation is caught with the exact offending value — a
+much higher correctness bar for agent-authored logic than a handful of examples.
+See [`examples/cookbook/properties.pedro`](examples/cookbook/properties.pedro).
+
 ### Known predicates
 
 A small standard library of readable predicates:
@@ -675,7 +698,7 @@ Repo-specific conventions and guardrails for anyone — or any Claude agent — 
 
 Live status and next steps live in [WORKLOG.md](WORKLOG.md). In brief:
 
-- **Done** — the language design; a real deterministic compiler (`pedroc`) for the scalar/list/map/`record`/`enum`/control-flow subset → **Python and TypeScript**; **capabilities + the swappable adapter layer** (Python; database/email/crypto verbs, undeclared-use is a compile error, the declared surface reported by `check --json`); the **capability → agent-permission bridge** (`pedroc permissions`, see above); the `pedroc check` loop, typed holes, and structured diagnostics, sandboxed in a subprocess; the [cookbook](docs/cookbook.md) as a passing regression suite (`tools/regress.py`) on both backends; a differential tester + seedable grammar fuzzer running live over both backends (`tools/differential.py`, `tools/fuzz.py`); the cross-target agreement check promoted into a first-class `pedroc check --targets` guarantee; and a mechanical doc-drift backstop (`tools/check_docs.py`) wired into CI.
+- **Done** — the language design; a real deterministic compiler (`pedroc`) for the scalar/list/map/`record`/`enum`/control-flow subset → **Python and TypeScript**; **capabilities + the swappable adapter layer** (Python; database/email/crypto verbs, undeclared-use is a compile error, the declared surface reported by `check --json`); the **capability → agent-permission bridge** (`pedroc permissions`, see above); the `pedroc check` loop, typed holes, and structured diagnostics, sandboxed in a subprocess; the [cookbook](docs/cookbook.md) as a passing regression suite (`tools/regress.py`) on both backends; a differential tester + seedable grammar fuzzer running live over both backends (`tools/differential.py`, `tools/fuzz.py`); the cross-target agreement check promoted into a first-class `pedroc check --targets` guarantee; **property-based `expect` blocks** (`for all n from a to b: <flag>`, enumerated over the bounded range with the first counterexample reported, on both backends); and a mechanical doc-drift backstop (`tools/check_docs.py`) wired into CI.
 - **Next (highest priority first)** — the remaining capability verbs (db `update`/`delete`, `http`/`files`/`time`/`random`) + the TypeScript adapter path; then `docs/SPEC.md`.
 
 ### Committed: bets that make Pedro distinctly agent-native 🧭
@@ -684,7 +707,7 @@ Approved 2026-07-28, queued on AntMac, not built yet — each depends on a "Next
 
 - ~~**Capability manifest → agent permission bridge** (`capability-permission-bridge`)~~ — **LANDED.** `pedroc permissions <file>.pedro` derives the manifest from the declared capability surface; see the "Built for agent-heavy teams" section above for the mapping table.
 - ~~**Cross-target consistency as a CLI guarantee**~~ — **LANDED** (2026-07-31). `pedroc check <file>.pedro --targets python,typescript` compiles the program to every listed target, runs each target's `expect` suite, and reports whether they all **agree** on every expectation; a disagreement is named down to the exact expectation and what each target got (a compiler bug report). "This program behaves identically everywhere" is now something any user's own code can assert, not just the compiler's own test suite. See "Using Pedro today" above.
-- **Property-based `expect` blocks** (`property-based-expect`). Extends `expect:` with a bounded quantified form (`for all n from 0 to 100: is_prime(n) implies n > 1`), enumerated and checked — a strict superset of today's example-based syntax, and a much higher correctness bar for agent-authored logic than a handful of examples.
+- ~~**Property-based `expect` blocks** (`property-based-expect`)~~ — **LANDED** (2026-08-01). `expect:` now takes a bounded quantified form, `for all n from a to b: <flag>`, enumerated and checked over the inclusive range (first counterexample fails the check with the exact value; ranges are capped for speed, `--forall-cap N` to override) — a strict superset of the example-based syntax, on both backends. See "Verification" above and [`examples/cookbook/properties.pedro`](examples/cookbook/properties.pedro).
 - **Tamper-evident generated output** (`verify-drift-detection`). Embeds a source content-hash in the "do not edit by hand" banner; `pedroc verify <file>.pedro <output>` detects drift — catches the common failure mode where a human hand-patches generated code and an agent later regenerates over it (or vice versa).
 
 ### Keeping the docs honest — mechanically, not just by reminder

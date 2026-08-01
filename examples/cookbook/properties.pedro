@@ -1,0 +1,36 @@
+# Property-based expectations — `for all <name> from <a> to <b>: <flag>` proves a
+# property by BRUTE FORCE over a bounded integer range. There is no theorem prover
+# and no LLM here: `pedroc check` enumerates the range, evaluates the flag at every
+# value, and reports the first counterexample as `counterexample: <name>=<v>, got
+# false`. A strict superset of example-based expectations — both forms coexist.
+target: python
+
+task is_even(n: whole) returns flag:
+    return n mod 2 == 0
+
+task double(n: whole) returns whole:
+    return n + n
+
+task is_prime(n: whole) returns flag:
+    when n is at most 1:
+        return false
+    let d = 2
+    while d * d is at most n:
+        when n mod d is 0:
+            return false
+        d = d + 1
+    return true
+
+expect:
+    # example-based expectations still work, unchanged
+    is_prime(7)
+    is_prime(8) == false
+
+    # a property: doubling any whole number yields an even number
+    for all n from 0 to 200: is_even(double(n))
+
+    # a property: sorting a range preserves its length
+    for all n from 0 to 50: count of sort numbers from 1 to n == n
+
+    # a property: every prime above 2 is odd (i.e. not even)
+    for all n from 3 to 100: not is_prime(n) or not is_even(n)

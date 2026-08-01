@@ -158,7 +158,10 @@ compile error; `check --json` reports the declared `capabilities` surface),
 `followed by`, the collection operations (`count of`, `item at`, `filter`, `sum of`,
 `numbers from`, …), string interpolation, `fail with`, `match`/`case` (+ `case
 otherwise`, over values *and* enum variants), `try`/`on failure as err`, typed
-holes (`todo`), and `expect` with `given`/`fails with`. Records → Python
+holes (`todo`), and `expect` with `given`/`fails with`/**property-based `for all
+<name> from <a> to <b>: <flag>`** (enumerated over the bounded range; first
+counterexample fails the check; capped for speed, `--forall-cap` to override).
+Records → Python
 `@dataclass` / TS `interface`; enums → Python `str, Enum` / TS const object. A
 `{ field: value }` literal (bare keys) is a **record literal typed by context**
 (resolved by `pedroc/annotate.py`); `{ "k": v }` (quoted keys) stays a map. A

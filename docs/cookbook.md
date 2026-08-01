@@ -20,6 +20,7 @@ All examples target `python`, but the same source retargets — change the `targ
 - [Recursion & dynamic programming](#recursion--dynamic-programming) — fibonacci_fast, min_coins
 - [Graphs](#graphs) — shortest_hops (BFS)
 - [Data modeling](#data-modeling) — tickets (record + enum)
+- [Property-based checks](#property-based-checks) — `for all n from a to b: …`
 
 ---
 
@@ -526,6 +527,53 @@ expect:
 
 See also `examples/order_total.pedro` — a `record LineItem` priced over a
 `list of LineItem`.
+
+---
+
+## Property-based checks
+
+`expect:` blocks aren't limited to hand-picked examples. A **property** —
+`for all <name> from <a> to <b>: <flag expression>` — asserts that something holds
+for *every* integer in an inclusive range. `pedroc check` proves it by brute force:
+it enumerates the range, evaluates the property at each value, and reports the first
+failure as `counterexample: <name>=<v>, got false`. Pedro is not a theorem prover,
+so ranges stay bounded (over **10000** values is refused — raise it with
+`pedroc check --forall-cap N`). Properties and examples mix freely in one block, and
+each property is checked identically on both the Python and TypeScript backends.
+
+```pedro
+target: python
+
+task is_even(n: whole) returns flag:
+    return n mod 2 == 0
+
+task double(n: whole) returns whole:
+    return n + n
+
+task is_prime(n: whole) returns flag:
+    when n is at most 1:
+        return false
+    let d = 2
+    while d * d is at most n:
+        when n mod d is 0:
+            return false
+        d = d + 1
+    return true
+
+expect:
+    is_prime(7)                                          # ordinary example
+    is_prime(8) == false
+
+    for all n from 0 to 200: is_even(double(n))          # doubling → even
+    for all n from 0 to 50: count of sort numbers from 1 to n == n   # sort keeps length
+    for all n from 3 to 100: not is_prime(n) or not is_even(n)       # primes > 2 are odd
+```
+
+The full program is `examples/cookbook/properties.pedro`. A deliberately wrong
+predicate is caught with the exact offending value — a far stronger correctness
+signal for agent-authored logic than a few examples. Good properties to reach for:
+a round-trip (`decode(encode(x)) == x`), an invariant (`count of sort(xs) == count of xs`,
+`f(x) is at least 0`), or a known relationship (`double(n) == n + n`).
 
 ---
 

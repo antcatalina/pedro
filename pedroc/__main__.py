@@ -9,12 +9,12 @@ import os
 import sys
 
 from . import compile_source, PedroSyntaxError, PedroTypeError, PedroCapabilityError
-from .check import check, check_targets
+from .check import check, check_targets, FORALL_CAP
 from .permissions import render as render_permissions
 
 BUILD_USAGE = "usage: python -m pedroc build <file.pedro> [-o <out.py>] [--target python]"
 CHECK_USAGE = ("usage: python -m pedroc check <file.pedro> [--json] "
-               "[--target python | --targets python,typescript]")
+               "[--target python | --targets python,typescript] [--forall-cap N]")
 PERMS_USAGE = "usage: python -m pedroc permissions <file.pedro> [--format claude-settings|json]"
 USAGE = BUILD_USAGE + "\n" + CHECK_USAGE + "\n" + PERMS_USAGE
 
@@ -70,6 +70,7 @@ def _cmd_check(args):
     as_json = False
     target = "python"
     targets = None
+    forall_cap = FORALL_CAP
     i = 1
     while i < len(args):
         if args[i] == "--json":
@@ -80,6 +81,16 @@ def _cmd_check(args):
             i += 2
         elif args[i] == "--targets" and i + 1 < len(args):
             targets = [t.strip() for t in args[i + 1].split(",") if t.strip()]
+            i += 2
+        elif args[i] == "--forall-cap" and i + 1 < len(args):
+            try:
+                forall_cap = int(args[i + 1])
+            except ValueError:
+                print(f"--forall-cap needs an integer, got {args[i + 1]!r}", file=sys.stderr)
+                return 2
+            if forall_cap < 1:
+                print("--forall-cap must be at least 1", file=sys.stderr)
+                return 2
             i += 2
         else:
             print(f"unknown or incomplete argument: {args[i]}", file=sys.stderr)
@@ -104,14 +115,16 @@ def _cmd_check(args):
         if len(targets) == 1:
             target = targets[0]
         else:
-            report = check_targets(source, filename=os.path.basename(infile), targets=targets)
+            report = check_targets(source, filename=os.path.basename(infile),
+                                   targets=targets, forall_cap=forall_cap)
             if as_json:
                 print(json.dumps(report, separators=(",", ":")))
             else:
                 _print_targets_human(report)
             return 0 if report["ok"] else 1
 
-    report = check(source, filename=os.path.basename(infile), target=target)
+    report = check(source, filename=os.path.basename(infile), target=target,
+                   forall_cap=forall_cap)
     if as_json:
         # Compact on purpose: this is read inside a model's context window.
         print(json.dumps(report, separators=(",", ":")))

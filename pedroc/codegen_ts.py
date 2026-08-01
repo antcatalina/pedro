@@ -206,6 +206,14 @@ def _gen_expect_item(item):
     kind = item[0]
     if kind == "given":
         return [f"  const {item[1]} = {_gen_expr(item[2])};"]
+    if kind == "forall":
+        name, lo, hi, body = item[1], item[2], item[3], item[4]
+        return [
+            f"  for (let {name} = {_gen_expr(lo)}; {name} <= ({_gen_expr(hi)}); {name}++) {{",
+            f"    if (!({_gen_expr(body)})) throw new Error(`counterexample: "
+            f"{name}=${{{name}}}, got false`);",
+            "  }",
+        ]
     if kind == "assert":
         expr = _gen_expr(item[1])
         msg = _js_string(f"expectation failed: {expr}")

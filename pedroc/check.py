@@ -34,6 +34,14 @@ _CMP = {"==", "!=", "<", "<=", ">", ">="}
 # behaved corpus program runs in milliseconds; this only bites infinite loops.
 DEFAULT_TIMEOUT = 10.0
 
+# Default cap on how many integers a `for all n from a to b` property may
+# enumerate during `check`. Pedro is not a theorem prover: it PROVES a property
+# by brute force over a bounded range, so the range must stay small enough that
+# `check` stays fast. A range wider than this is reported as a failed expectation
+# (narrow the range, or raise the cap with `check --forall-cap N`). This governs
+# only the check-time guard; `build` output enumerates the exact range as written.
+FORALL_CAP = 10000
+
 _RUNNER = os.path.join(os.path.dirname(os.path.abspath(__file__)), "_expect_runner.py")
 _ADAPTERS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "adapters.py")
 
@@ -111,7 +119,7 @@ def _strip_parens(s):
 
 
 def check(source, filename="<pedro>", target="python", timeout=DEFAULT_TIMEOUT,
-          cpu_timeout=None):
+          cpu_timeout=None, forall_cap=FORALL_CAP):
     report = {
         "ok": False,
         "file": filename,
@@ -164,7 +172,7 @@ def check(source, filename="<pedro>", target="python", timeout=DEFAULT_TIMEOUT,
         return report
 
     code = generate(program, filename)
-    steps = _build_steps(program)
+    steps = _build_steps(program, forall_cap)
     adapters = _adapters_source() if surface else None
     run = _run_expectations(code, steps, timeout, adapters, cpu_timeout)
 
@@ -210,7 +218,7 @@ def check(source, filename="<pedro>", target="python", timeout=DEFAULT_TIMEOUT,
 
 
 def check_targets(source, filename="<pedro>", targets=("python", "typescript"),
-                  timeout=DEFAULT_TIMEOUT):
+                  timeout=DEFAULT_TIMEOUT, forall_cap=FORALL_CAP):
     """Compile the program to EVERY listed target, run each target's expect suite,
     and report whether all targets AGREE on every expectation.
 
@@ -249,7 +257,8 @@ def check_targets(source, filename="<pedro>", targets=("python", "typescript"),
 
     # The canonical Python `check` gives us the shared static surface (syntax/name/
     # type/capability errors, holes, declared capabilities) once for all targets.
-    base = check(source, filename=filename, target="python", timeout=timeout)
+    base = check(source, filename=filename, target="python", timeout=timeout,
+                 forall_cap=forall_cap)
     report["capabilities"] = base["capabilities"]
     report["errors"] = base["errors"]
     report["holes"] = base["holes"]
@@ -379,7 +388,7 @@ def _targets_summary(report, targets, ran):
     return f"{lanes} agree but not all expectations pass"
 
 
-def _build_steps(program):
+def _build_steps(program, forall_cap=FORALL_CAP):
     """Render each expect item to the pre-computed strings the sandboxed runner
     needs, so the child process needs no pedroc imports. Order is preserved so a
     `given` binding is visible to later expectations."""
@@ -393,6 +402,13 @@ def _build_steps(program):
                 steps.append({"kind": "given", "name": item[1], "expr": _gen_expr(item[2])})
             elif kind == "given-empty":
                 steps.append({"kind": "exec", "expr": f"{item[1]}.clear()"})
+            elif kind == "forall":
+                name, lo, hi, body = item[1], item[2], item[3], item[4]
+                lo_s, hi_s, body_s = _gen_expr(lo), _gen_expr(hi), _gen_expr(body)
+                steps.append({"kind": "forall", "name": name,
+                              "lo": lo_s, "hi": hi_s, "expr": body_s, "cap": forall_cap,
+                              "text": f"for all {name} from {_strip_parens(lo_s)} "
+                                      f"to {_strip_parens(hi_s)}: {_strip_parens(body_s)}"})
             elif kind == "assert":
                 a = item[1]
                 expr = _gen_expr(a)

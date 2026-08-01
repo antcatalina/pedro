@@ -440,6 +440,61 @@ def test_diff_targets_flags_whole_program_disagreement_for_coarse_lane():
     assert d["results"]["typescript"]["error"] == "expectation failed: a == 1"
 
 
+# --- property-based expectations (`for all n from a to b: ...`) --------------
+
+def _forall_prog(body, lo=1, hi=20):
+    return f"target: python\n\nexpect:\n    for all n from {lo} to {hi}: {body}\n"
+
+
+def test_property_holds_over_the_whole_range():
+    report = check(_forall_prog("n * n is at least n", lo=0))
+    assert report["ok"], report
+    assert report["expectations"][0]["passed"] is True
+    assert report["expectations"][0]["text"].startswith("for all n from 0 to 20:")
+
+
+def test_property_wrong_impl_caught_with_exact_counterexample():
+    # A deliberately false property: `n mod 7 is not 0` holds until n=7. `check`
+    # must enumerate the range and report the FIRST failing value precisely.
+    report = check(_forall_prog("n mod 7 is not 0"))
+    assert report["ok"] is False
+    exp = report["expectations"][0]
+    assert exp["passed"] is False
+    assert exp["detail"] == "counterexample: n=7, got false"
+
+
+def test_property_range_over_cap_is_refused_and_cap_is_overridable():
+    src = _forall_prog("n is at least 1", lo=1, hi=100000)  # 100000 > default cap
+    over = check(src)
+    assert over["expectations"][0]["passed"] is False
+    assert "over the cap" in over["expectations"][0]["detail"]
+    # Raising the cap lets the same property run to completion.
+    raised = check(src, forall_cap=200000)
+    assert raised["ok"], raised
+
+
+def test_property_binder_is_scoped_to_body_not_bounds():
+    # `n` is in scope in the body...
+    assert check(_forall_prog("n is at least 0", lo=0))["ok"]
+    # ...but the bounds see only the surrounding scope: an unbound name there is
+    # an ordinary name error, not silently the loop variable.
+    bad = check("target: python\n\nexpect:\n"
+                "    for all n from k to 5: n is at least 0\n")
+    assert bad["ok"] is False
+    assert bad["errors"][0]["code"] == "undefined-name"
+
+
+def test_property_agrees_across_python_and_typescript():
+    src = ("target: python\n\n"
+           "task dbl(n: whole) returns whole:\n    return n + n\n\n"
+           "expect:\n    for all n from 0 to 30: dbl(n) mod 2 == 0\n")
+    report = check_targets(src, filename="<test>", targets=("python", "typescript"))
+    assert report["agree"] is not False, report["summary"]
+    assert report["disagreements"] == []
+    if report["results"]["typescript"]["ran"]:
+        assert report["ok"], report["summary"]
+
+
 # --- runner (pytest-free) ---------------------------------------------------
 
 def _run():

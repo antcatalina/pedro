@@ -103,6 +103,35 @@ def main():
                 _emit({"t": "given-error", "message": str(e)})
             continue
 
+        if kind == "forall":
+            # Property-based expectation: enumerate the inclusive integer range
+            # [lo, hi] and evaluate the flag-valued body at each. First value that
+            # is not true is the counterexample. Honest brute force, not a prover —
+            # a range wider than the cap is refused so `check` stays fast.
+            passed = True
+            detail = None
+            name = step["name"]
+            try:
+                lo = int(eval(step["lo"], ns))
+                hi = int(eval(step["hi"], ns))
+                width = hi - lo + 1
+                if width > step["cap"]:
+                    passed = False
+                    detail = (f"range spans {width} values, over the cap of "
+                              f"{step['cap']} (narrow the range or raise --forall-cap)")
+                else:
+                    for _v in range(lo, hi + 1):
+                        ns[name] = _v
+                        if not bool(eval(step["expr"], ns)):
+                            passed = False
+                            detail = f"counterexample: {name}={_v}, got false"
+                            break
+            except Exception as e:
+                passed = False
+                detail = f"error: {e}"
+            _emit({"t": "exp", "text": step["text"], "passed": passed, "detail": detail})
+            continue
+
         if kind == "assert":
             passed = False
             detail = None

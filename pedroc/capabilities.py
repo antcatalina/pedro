@@ -151,6 +151,8 @@ def _walk_capcalls(program, fn):
                     expr(item[2])
                 elif item[0] in ("assert", "fails"):
                     expr(item[1])
+                elif item[0] == "forall":
+                    expr(item[2]); expr(item[3]); expr(item[4])
 
 
 def check_capabilities(program):

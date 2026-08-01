@@ -5,6 +5,72 @@ resume cleanly across sessions.
 
 ---
 
+## 2026-08-01 — Property-based `expect` LANDED (`for all n from a to b`, agent-native bet #3)
+
+Turned the 🧭 `property-based-expect` bet into a real, documented feature. An
+`expect:` block can now assert a **property** that must hold across a bounded
+integer range, not just hand-picked examples:
+
+```pedro
+expect:
+    for all n from 0 to 200: is_even(double(n))
+    for all n from 0 to 50: count of sort numbers from 1 to n == n
+```
+
+**Semantics — honest brute force, not a prover.** `pedroc check` ENUMERATES the
+inclusive range `[a, b]`, binds `<name>` to each integer, and evaluates the
+flag-valued body. The first value that isn't true fails the expectation with
+`detail: "counterexample: <name>=<v>, got false"`. Ranges stay bounded so `check`
+stays fast: a range wider than the default cap (**10000**, `FORALL_CAP` in
+`pedroc/check.py`) is refused as a failed expectation (`"range spans N values, over
+the cap of 10000 …"`); `pedroc check --forall-cap N` overrides it. A strict
+SUPERSET of the example-based syntax — every existing `expect` block is unchanged.
+
+**What landed.**
+- **Parser** (`pedroc/parser.py`, `_parse_expect`): a new `for` branch parses
+  `for all <name> from <lo> to <hi>: <body>` into an expect item
+  `("forall", name, lo, hi, body)`, reusing `_parse_add` for the bounds (same as
+  `numbers from … to …`) and `_parse_expr` for the body. No new AST node — it rides
+  the existing expect-item tuple machinery.
+- **Static passes** all learned the new item shape: `resolve.py` (bounds see the
+  surrounding scope, body additionally binds `<name>` — an unbound name in the
+  bounds is a normal `undefined-name`), `annotate.py` (record-literal typing walks
+  lo/hi/body), `capabilities.py` (verb-use walks all three).
+- **`check` / the sandbox runner.** `_build_steps` renders a `forall` step (lo/hi/
+  body as pre-computed expression strings + the cap + a readable `text`);
+  `pedroc/_expect_runner.py` enumerates in the sandboxed child, enforces the cap,
+  and emits the first counterexample. `check(..., forall_cap=)` and
+  `check_targets(..., forall_cap=)` thread the override; `__main__.py` adds the
+  `--forall-cap N` flag to `check`.
+- **Both backends, identically.** `codegen_python.py` emits `for n in range(lo,
+  (hi)+1): assert (body), "counterexample: n=…"`; `codegen_ts.py` emits the
+  equivalent `for` loop throwing on the first counterexample. So `build` output on
+  BOTH targets runs the property standalone, and the TS lane (which runs generated
+  code via `node`) proves the property too — `check --targets python,typescript`
+  agrees on property programs.
+
+**Proof (the task's "PROVE IT").** New cookbook example
+`examples/cookbook/properties.pedro` (is_even/double, a sort length-preservation
+property, "primes > 2 are odd", plus ordinary examples) — passes `check`, runs
+green on `node`, and agrees across targets; it's in the regress corpus (now 78
+expectations). Five new tests in `tests/test_diagnostics.py` (now 45/45): a true
+property passes; a false property (`n mod 7 is not 0`) is caught with the EXACT
+`counterexample: n=7, got false`; an over-cap range is refused and `--forall-cap`
+overrides it; the `for all` binder is scoped to the body but not the bounds; and a
+property agrees across Python + TypeScript. `python tools/regress.py` green
+(corpus + TS lane + 45 diagnostics + 6 sandbox + fuzz + doc-drift).
+
+**TS note.** The TypeScript lane runs the generated program (which throws on the
+first counterexample), so it reports a whole-program verdict; the check-time cap is
+a Python-side guard on `check`'s enumeration. Real corpus ranges are tiny, so the
+cap never bites and the backends always agree.
+
+**Next.** No gap. Remaining roadmap unchanged: the pending capability verbs (db
+`update`/`delete`, `http`/`files`/`time`/`random`) + the TypeScript adapter path;
+then `docs/SPEC.md`.
+
+---
+
 ## 2026-07-31 — `pedroc check --targets` LANDED (cross-target-check-cli, agent-native bet #2)
 
 Promoted `tools/differential.py`'s cross-backend agreement check from a dev-only
