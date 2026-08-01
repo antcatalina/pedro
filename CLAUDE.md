@@ -69,24 +69,30 @@ structured feedback — so the language must stay small, regular, and verifiable
 ## How to run
 
 ```
+# install once (editable) so the `pedroc` command is on PATH; no PYTHONPATH needed
+pip install -e .
+
 # compile Pedro to a target (python or typescript)
-PYTHONPATH=. python -m pedroc build <file>.pedro -o out.py [--target python|typescript]
+pedroc build <file>.pedro -o out.py [--target python|typescript]
 
 # check: compile, run the expect block, report per-assertion pass/fail as JSON
-PYTHONPATH=. python -m pedroc check <file>.pedro --json
+pedroc check <file>.pedro --json
 
 # check EVERY target and assert they agree, expectation-for-expectation (a
 # disagreement is a codegen bug, reported down to which target lost which expectation)
-PYTHONPATH=. python -m pedroc check <file>.pedro --targets python,typescript [--json]
+pedroc check <file>.pedro --targets python,typescript [--json]
 
 # permissions: derive an agent-harness permission manifest from the declared
 # capability surface (Claude Code settings.json shape by default)
-PYTHONPATH=. python -m pedroc permissions <file>.pedro [--format claude-settings|json]
+pedroc permissions <file>.pedro [--format claude-settings|json]
+
+# not installed? `python -m pedroc …` is identical when run from the repo root
+python -m pedroc check <file>.pedro --json
 
 # LLM-authoring benchmark: score how reliably a model writes correct Pedro (no API key)
-PYTHONPATH=. python -m tools.eval list                       # the seeded tasks
-PYTHONPATH=. python -m tools.eval score <id> <candidate>.pedro   # grade one solution
-PYTHONPATH=. python -m tools.eval run <solutions_dir>        # grade a whole run
+python -m tools.eval list                       # the seeded tasks
+python -m tools.eval score <id> <candidate>.pedro   # grade one solution
+python -m tools.eval run <solutions_dir>        # grade a whole run
 
 # regression / CI (must stay green)
 python tools/regress.py

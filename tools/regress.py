@@ -108,6 +108,13 @@ def main(argv=None):
     if not run_sandbox_tests():
         all_ok = False
 
+    # ...and the packaging tests (pedroc is importable + both CLI entry points
+    # work with no PYTHONPATH).
+    from tests.test_packaging import _run as run_packaging_tests
+    print()
+    if not run_packaging_tests():
+        all_ok = False
+
     # ...and the LLM-authoring benchmark's self-test: every task's reference
     # solution must satisfy its hidden oracle (proves each oracle is satisfiable
     # and the scorer wiring is sound — see tools/eval/).

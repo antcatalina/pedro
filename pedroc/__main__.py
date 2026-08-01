@@ -233,6 +233,8 @@ def _print_targets_human(report):
 
 
 def main(argv):
+    if argv is None:
+        argv = sys.argv[1:]
     if not argv:
         print(USAGE, file=sys.stderr)
         return 2
@@ -247,5 +249,15 @@ def main(argv):
     return 2
 
 
+def run():
+    """Console-script entry point (the bare `pedroc` command).
+
+    setuptools' generated wrapper calls `sys.exit(run())`, so returning the
+    process exit code here is correct. `python -m pedroc` goes through the same
+    `main` below, so both invocation paths behave identically.
+    """
+    return main(sys.argv[1:])
+
+
 if __name__ == "__main__":
-    sys.exit(main(sys.argv[1:]))
+    sys.exit(run())

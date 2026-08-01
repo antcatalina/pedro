@@ -1,9 +1,9 @@
 # In-flight task
 
-_None._ The 2026-07-31 `pedroc check --targets python,typescript` feature
-(cross-target-check-cli) landed and is green: `check_targets` in `pedroc/check.py`
-compiles to every listed target, runs each `expect` suite, and reports whether all
-targets agree on every expectation (a disagreement names which target lost which
-expectation) — reusing `tools/backends.py`'s runners. Single-target `--targets`
-is byte-identical to today's `check`. Proven across the whole cookbook + with an
-injected one-target codegen bug. See that WORKLOG entry. No task in flight.
+_None._ The 2026-08-01 installable-CLI work landed and is green: `pyproject.toml`
+adds a `pedroc` console-script entry point (`pedroc.__main__:run`), so both
+`pedroc …` and `python -m pedroc …` work after `pip install -e .` with no
+`PYTHONPATH`. `tests/test_packaging.py` (wired into `tools/regress.py`) pins the
+importable API + byte-identical codegen + both CLI entry points; CI installs
+editable and runs `python tools/regress.py`. See that WORKLOG entry. No task in
+flight.

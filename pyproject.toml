@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=64.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pedroc"
+version = "0.1"
+description = "The deterministic Pedro compiler — the verifiable intermediate language between natural-language intent and executable code."
+readme = "README.md"
+requires-python = ">=3.8"
+license = { text = "MIT" }
+authors = [{ name = "Pedro" }]
+keywords = ["compiler", "llm", "intent-language", "pedro"]
+
+[project.scripts]
+# `pip install -e .` puts a `pedroc` command on PATH, wired to the same CLI as
+# `python -m pedroc`. Both entry paths call pedroc.__main__:run.
+pedroc = "pedroc.__main__:run"
+
+[project.urls]
+Homepage = "https://github.com/antcatalina/pedro"
+
+[tool.setuptools]
+# Only the compiler package ships; tools/ and tests/ stay dev-only. The package
+# reads _expect_runner.py and adapters.py as data at runtime, but they are .py
+# files inside the package so setuptools includes them automatically.
+packages = ["pedroc"]

@@ -144,7 +144,7 @@ if __name__ == "__main__":
 `pedroc check examples/cookbook/recover.pedro --json` runs that file and reports `{"ok": true, ...}` — this isn't a mockup, it's what the compiler does right now. Run it yourself:
 
 ```
-PYTHONPATH=. python -m pedroc check examples/cookbook/recover.pedro --json
+pedroc check examples/cookbook/recover.pedro --json
 ```
 
 ---
@@ -602,22 +602,30 @@ This is the part that makes Pedro reliable. When a `.pedro` file is compiled, th
 
 ## Using Pedro today
 
-`pedroc` is a real compiler — run it from the terminal (Python 3.11+, no dependencies):
+`pedroc` is a real compiler — run it from the terminal (Python 3.8+, no dependencies).
+Install it once and the `pedroc` command is on your PATH — no `PYTHONPATH` ceremony:
+
+```
+pip install -e .        # from the repo root; puts a `pedroc` command on PATH
+```
 
 ```
 # compile Pedro to Python
-PYTHONPATH=. python -m pedroc build examples/cookbook/numbers.pedro -o build/numbers.py
+pedroc build examples/cookbook/numbers.pedro -o build/numbers.py
 
 # ...or to TypeScript, and run it straight away (Node v24+ strips types — no build step)
-PYTHONPATH=. python -m pedroc build examples/cookbook/numbers.pedro -o build/numbers.ts --target typescript
+pedroc build examples/cookbook/numbers.pedro -o build/numbers.ts --target typescript
 node build/numbers.ts
 
 # check it: compile, run its expect blocks, report per-assertion pass/fail
-PYTHONPATH=. python -m pedroc check examples/cookbook/numbers.pedro --json
+pedroc check examples/cookbook/numbers.pedro --json
 
 # ...or check EVERY target at once and assert they agree, expectation-for-expectation
-PYTHONPATH=. python -m pedroc check examples/cookbook/numbers.pedro --targets python,typescript
+pedroc check examples/cookbook/numbers.pedro --targets python,typescript
 ```
+
+Prefer not to install? `python -m pedroc …` works the same from the repo root
+(the two entry points are identical) — e.g. `python -m pedroc check examples/cookbook/numbers.pedro --json`.
 
 **`--targets` — one program, verified identical on every backend.** `pedroc check
 <file>.pedro --targets python,typescript` compiles the program to each listed target,
@@ -676,7 +684,7 @@ natural-language `spec.md` (with the exact required signature) to a **hidden**
 `pedroc check`, and reports pass/fail plus the structured failure detail — the exact
 signal a model self-corrects from in the NL → Pedro → `check` → fix loop. It needs
 **no API key** (it scores provided files); ~10 seeded tasks span arithmetic, strings,
-lists, and small algorithms. Run `PYTHONPATH=. python -m tools.eval list` /
+lists, and small algorithms. Run `python -m tools.eval list` /
 `… run <solutions_dir>`; its reference solutions are self-tested green inside
 `tools/regress.py`. See [`tools/eval/README.md`](tools/eval/README.md) for the loop
 and how to wire a live model call.
@@ -701,7 +709,7 @@ its own with `python tools/check_docs.py`, and use `python tools/regress.py --st
 (or `python tools/check_docs.py --strict-docs`) to make HIGH findings fail.
 
 **CI is machine-independent.** The [`regress` GitHub Actions workflow](.github/workflows/regress.yml)
-runs `PYTHONPATH=. python tools/regress.py` — the exact command below — on every push
+runs `python tools/regress.py` — the exact command below — on every push
 to `agent/dev`/`master` and on every PR, so the badge at the top of this README is the
 authoritative green/red signal. AntMac's cron runs the same command as a convenience and
 build engine on top of it, not the source of truth.

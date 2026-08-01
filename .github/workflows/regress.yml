@@ -1,10 +1,10 @@
 name: regress
 
 # Machine-independent CI for pedroc. This is the AUTHORITATIVE green/red signal:
-# it runs the exact same command AntMac's cron runs (`PYTHONPATH=. python
-# tools/regress.py`) but on GitHub's infrastructure, so the repo stays verifiable
-# even if the Mac is down, logged out, or misconfigured. Do not add
-# continue-on-error or allowed failures: a non-zero regress.py MUST fail the check.
+# it runs the exact same command AntMac's cron runs (`python tools/regress.py`)
+# but on GitHub's infrastructure, so the repo stays verifiable even if the Mac is
+# down, logged out, or misconfigured. Do not add continue-on-error or allowed
+# failures: a non-zero regress.py MUST fail the check.
 
 on:
   push:
@@ -31,7 +31,12 @@ jobs:
         with:
           node-version: "24"
 
-      # pedroc is zero-dependency (stdlib only), so there is nothing to install.
+      # pedroc is zero-dependency (stdlib only). Installing it editable puts the
+      # `pedroc` console script on PATH so the packaging tests exercise the real
+      # entry point; regress.py itself needs no PYTHONPATH (it bootstraps sys.path).
+      - name: Install pedroc (editable)
+        run: python -m pip install -e .
+
       # This is the same command AntMac's cron and README document as CI.
       - name: Run regression suite
-        run: PYTHONPATH=. python tools/regress.py
+        run: python tools/regress.py

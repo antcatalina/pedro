@@ -5,6 +5,52 @@ resume cleanly across sessions.
 
 ---
 
+## 2026-08-01 — `pedroc` is now an installable CLI (`pip install -e .`, no more `PYTHONPATH=.`)
+
+Until now every invocation needed `PYTHONPATH=. python -m pedroc …`. `pedroc` is
+now a proper packaged console script: `pip install -e .` puts a bare `pedroc`
+command on PATH, and **both** `pedroc …` and `python -m pedroc …` route through the
+same CLI. No language or codegen changes.
+
+**What landed.**
+- **`pyproject.toml`** (repo root) — setuptools build backend, `[project.scripts]`
+  `pedroc = "pedroc.__main__:run"`, `requires-python >=3.8`, packages = `["pedroc"]`.
+  The package stays zero-runtime-dependency (stdlib only).
+- **`pedroc/__main__.py`** — added `run()` (no-arg console entry point that calls
+  `main(sys.argv[1:])`; setuptools' wrapper does `sys.exit(run())`). `main` now also
+  tolerates `argv=None`. `python -m pedroc` and the bare `pedroc` command are
+  byte-for-byte the same behavior.
+- **Sandbox was already relocation-safe.** `check()` runs `pedroc/_expect_runner.py`
+  by ABSOLUTE path and injects `pedroc/adapters.py`'s source as `pedro_capabilities`
+  into the child, and the child's env deliberately drops `PYTHONPATH` — so `check`
+  works identically whether pedroc is pip-installed, run in-tree, or invoked from any
+  cwd. Verified `pedroc check` on a capability-free program from `/tmp`. Both those
+  files are `.py` modules inside the package, so the wheel bundles them automatically
+  (confirmed by inspecting a built `pedroc-0.1-py3-none-any.whl`).
+- **`tests/test_packaging.py`** (new, wired into `tools/regress.py`) — imports
+  `pedroc`, compiles a tiny sample and asserts the generated Python is byte-identical,
+  asserts determinism, runs `python -m pedroc` in a clean subprocess with `PYTHONPATH`
+  stripped, and runs the bare `pedroc` console script when it is on PATH (skips
+  gracefully in a fresh in-tree checkout where nothing is installed).
+- **`tools/regress.py`** already bootstrapped `sys.path` itself, so it never needed
+  `PYTHONPATH`; the new packaging tests run inside it. CI (`.github/workflows/regress.yml`)
+  now does `pip install -e .` first (so the console-script test actually exercises the
+  real entry point) and runs `python tools/regress.py` with no `PYTHONPATH`.
+- **Docs** — `README.md` (usage block leads with `pip install -e .` + bare `pedroc`;
+  all `PYTHONPATH=.` examples dropped), `CLAUDE.md` "How to run", and `.gitignore`
+  (`*.egg-info/`, `*.egg`, `.eggs/`) updated. `python tools/check_docs.py` clean.
+
+**Verified:** `python tools/regress.py` green end-to-end (exit 0; 78 corpus
+expectations, 11/11 TS lane, 45 diagnostic + 6 sandbox + 5 packaging tests, 10/10
+eval self-test, fuzz clean, no doc drift). Editable install + a from-`/tmp` run of
+both entry points confirmed by hand.
+
+**Next:** nothing blocking. If a future job wants a published package, add project
+classifiers/long-description and consider `python -m build` in CI; otherwise the
+roadmap below (remaining capability verbs, the TS adapter path) is unaffected.
+
+---
+
 ## 2026-08-01 — LLM-authoring benchmark LANDED (`tools/eval/` — the "go-to language for LLMs" claim, made MEASURABLE)
 
 Pedro's central claim is that it is the go-to *intent* language for LLMs. Until now
