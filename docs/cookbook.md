@@ -5,7 +5,7 @@ A growing library of classic algorithms written in Pedro. It has two jobs:
 1. **Teach the language by example** — humans and Claude both learn Pedro faster from worked programs than from a grammar.
 2. **Anchor the compiler** — the more idiomatic patterns Claude has seen in-context, the more consistently it compiles.
 
-> **Every algorithm here is machine-verified.** Each one was compiled (to Python) and run against its `expect` block. The verification harness lives in `build/cookbook_check.py`; at the time of writing all **22 algorithms pass ✓**.
+> **Every algorithm here is machine-verified.** Each one is compiled and run against its `expect` block as part of the corpus regression, `python tools/regress.py` (Python plus, for the non-capability programs, the TypeScript backend via the differential lane). At the time of writing all **34 algorithms pass ✓** on every available backend.
 
 All examples target `python`, but the same source retargets — change the `target:` line and recompile.
 
@@ -15,10 +15,12 @@ All examples target `python`, but the same source retargets — change the `targ
 - [Numbers & math](#numbers--math) — factorial, fibonacci, gcd, is_prime, sum_of_digits, fizzbuzz
 - [Text](#text) — reverse_text, is_palindrome, count_vowels, word_count, is_anagram
 - [Searching](#searching) — index_of, binary_search
-- [Sorting](#sorting) — bubble_sort, quicksort, merge_sort
+- [Sorting](#sorting) — bubble_sort, quicksort, merge_sort, selection_sort, insertion_sort
 - [Collections](#collections) — maximum, average, unique
-- [Recursion & dynamic programming](#recursion--dynamic-programming) — fibonacci_fast, min_coins
-- [Graphs](#graphs) — shortest_hops (BFS)
+- [Arrays & matrices](#arrays--matrices) — transpose, sliding_window_max
+- [Recursion & dynamic programming](#recursion--dynamic-programming) — fibonacci_fast, min_coins, lcs_length, knapsack
+- [Graphs](#graphs) — shortest_hops (BFS), depth_first (DFS), topological_sort, dijkstra
+- [Codecs](#codecs) — rle_encode/decode, caesar cipher
 - [Data modeling](#data-modeling) — tickets (record + enum)
 - [Property-based checks](#property-based-checks) — `for all n from a to b: …`
 
@@ -352,6 +354,49 @@ expect:
     merge_sort([5, 2, 4, 1, 3]) == [1, 2, 3, 4, 5]
 ```
 
+### selection_sort — repeatedly select the smallest remaining ✓
+
+Scan the unsorted tail for its minimum and swap it into place. The `for all`
+property checks the result keeps its length for every input size up to 40.
+
+```pedro
+task selection_sort(items: list of whole) returns list of whole:
+    let result = copy of items
+    let n = count of result
+    for each i in numbers from 0 to n - 1:
+        let min_index = i
+        for each j in numbers from i + 1 to n - 1:
+            when (item at j in result) is less than (item at min_index in result):
+                min_index = j
+        swap items at i and min_index in result
+    return result
+
+expect:
+    selection_sort([5, 4, 3, 2, 1]) == [1, 2, 3, 4, 5]
+    selection_sort([]) == []
+    for all n from 0 to 40: count of selection_sort(numbers from 0 to n) == n + 1
+```
+
+### insertion_sort — grow a sorted prefix, swapping each new item down ✓
+
+```pedro
+task insertion_sort(items: list of whole) returns list of whole:
+    let result = copy of items
+    let n = count of result
+    for each i in numbers from 1 to n - 1:
+        let j = i
+        while j is greater than 0 and (item at j - 1 in result) is greater than (item at j in result):
+            swap items at j - 1 and j in result
+            decrease j by 1
+    return result
+
+expect:
+    insertion_sort([9, 7, 8, 6, 5]) == [5, 6, 7, 8, 9]
+    insertion_sort([42]) == [42]
+```
+
+The full file is `examples/cookbook/sorting_more.pedro`.
+
 ---
 
 ## Collections
@@ -401,6 +446,60 @@ expect:
 
 ---
 
+## Arrays & matrices
+
+### transpose — turn a matrix's rows into columns ✓
+
+A matrix is a `list of list of whole`. Read cell `(i, j)` by nesting the indexer:
+`item at j in (item at i in matrix)`.
+
+```pedro
+task transpose(matrix: list of list of whole) returns list of list of whole:
+    when matrix is empty:
+        return []
+    let rows = count of matrix
+    let cols = count of (first of matrix)
+    let result = []
+    for each j in numbers from 0 to cols - 1:
+        let new_row = []
+        for each i in numbers from 0 to rows - 1:
+            add (item at j in (item at i in matrix)) to new_row
+        add new_row to result
+    return result
+
+expect:
+    transpose([[1, 2, 3], [4, 5, 6]]) == [[1, 4], [2, 5], [3, 6]]
+    transpose([[1], [2], [3]]) == [[1, 2, 3]]
+    transpose([]) == []
+```
+
+### sliding_window_max — the maximum of every window of size k ✓
+
+```pedro
+task sliding_window_max(items: list of whole, k: whole) returns list of whole:
+    let n = count of items
+    let result = []
+    when k is at most 0 or k is greater than n:
+        return result
+    for each start in numbers from 0 to n - k:
+        let window_max = item at start in items
+        for each offset in numbers from 1 to k - 1:
+            let value = item at start + offset in items
+            when value is greater than window_max:
+                window_max = value
+        add window_max to result
+    return result
+
+expect:
+    sliding_window_max([1, 3, -1, -3, 5, 3, 6, 7], 3) == [3, 3, 5, 5, 6, 7]
+    sliding_window_max([9, 8, 7], 1) == [9, 8, 7]
+    sliding_window_max([1, 2], 5) == []
+```
+
+The full file is `examples/cookbook/arrays.pedro`.
+
+---
+
 ## Recursion & dynamic programming
 
 ### fibonacci_fast — memoized Fibonacci with a map ✓
@@ -447,6 +546,72 @@ expect:
     min_coins(3, [2]) == -1
 ```
 
+### lcs_length — longest common subsequence (length) ✓
+
+A 2-D DP. Pedro's `set map[key] to` takes a single index, not `table[i][j]`, so we
+key a flat map by an interpolated `"row,col"` string and fill every cell before it
+is read.
+
+```pedro
+task lcs_length(a: text, b: text) returns whole:
+    let ca = characters of a
+    let cb = characters of b
+    let m = count of ca
+    let n = count of cb
+    let dp = empty map of text to whole
+    for each i in numbers from 0 to m:
+        for each j in numbers from 0 to n:
+            when i is 0 or j is 0:
+                set dp["{i},{j}"] to 0
+            otherwise:
+                when (item at i - 1 in ca) is (item at j - 1 in cb):
+                    set dp["{i},{j}"] to dp["{i - 1},{j - 1}"] + 1
+                otherwise:
+                    let up = dp["{i - 1},{j}"]
+                    let left = dp["{i},{j - 1}"]
+                    when up is at least left:
+                        set dp["{i},{j}"] to up
+                    otherwise:
+                        set dp["{i},{j}"] to left
+    return dp["{m},{n}"]
+
+expect:
+    lcs_length("ABCBDAB", "BDCAB") == 4
+    lcs_length("abc", "xyz") == 0
+```
+
+### knapsack — 0/1 knapsack, maximum value within a capacity ✓
+
+Same flat-map DP over `(item index, remaining capacity)`.
+
+```pedro
+task knapsack(weights: list of whole, values: list of whole, capacity: whole) returns whole:
+    let n = count of weights
+    let dp = empty map of text to whole
+    for each c in numbers from 0 to capacity:
+        set dp["0,{c}"] to 0
+    for each i in numbers from 1 to n:
+        let w = item at i - 1 in weights
+        let v = item at i - 1 in values
+        for each c in numbers from 0 to capacity:
+            let without = dp["{i - 1},{c}"]
+            when w is at most c:
+                let with_item = v + dp["{i - 1},{c - w}"]
+                when with_item is greater than without:
+                    set dp["{i},{c}"] to with_item
+                otherwise:
+                    set dp["{i},{c}"] to without
+            otherwise:
+                set dp["{i},{c}"] to without
+    return dp["{n},{capacity}"]
+
+expect:
+    knapsack([1, 3, 4, 5], [1, 4, 5, 7], 7) == 9
+    knapsack([], [], 10) == 0
+```
+
+Both are in `examples/cookbook/dp_more.pedro`.
+
 ---
 
 ## Graphs
@@ -476,6 +641,176 @@ expect:
     shortest_hops(g, "a", "d") == 2
     shortest_hops(g, "a", "a") == 0
 ```
+
+### depth_first — pre-order DFS visit sequence ✓
+
+Written purely functionally: each visit *returns* the extended visited list rather
+than mutating shared state, so it behaves identically on every backend.
+
+```pedro
+task depth_first(graph: map of text to list of text, start: text) returns list of text:
+    return dfs_visit(graph, start, [])
+
+task dfs_visit(graph: map of text to list of text, node: text, visited: list of text) returns list of text:
+    when node in visited:
+        return visited
+    let result = visited followed by [node]
+    for each neighbor in graph[node]:
+        result = dfs_visit(graph, neighbor, result)
+    return result
+
+expect:
+    given g = { "a": ["b", "c"], "b": ["d"], "c": [], "d": [] }
+    depth_first(g, "a") == ["a", "b", "d", "c"]
+```
+
+### topological_sort — order a DAG by dependencies (Kahn) ✓
+
+Count each node's in-degree, start from the zero-in-degree nodes, and peel them off,
+decrementing successors as you go.
+
+```pedro
+task topological_sort(graph: map of text to list of text, nodes: list of text) returns list of text:
+    let indegree = empty map of text to whole
+    for each node in nodes:
+        set indegree[node] to 0
+    for each node in nodes:
+        for each neighbor in graph[node]:
+            set indegree[neighbor] to indegree[neighbor] + 1
+    let ready = filter node in nodes where indegree[node] is 0
+    let order = []
+    while ready is not empty:
+        let node = first of ready
+        ready = drop 1 from ready
+        add node to order
+        for each neighbor in graph[node]:
+            set indegree[neighbor] to indegree[neighbor] - 1
+            when indegree[neighbor] is 0:
+                add neighbor to ready
+    return order
+
+expect:
+    given d = { "shirt": ["tie", "belt"], "tie": ["jacket"], "belt": ["jacket"], "jacket": [] }
+    topological_sort(d, ["shirt", "tie", "belt", "jacket"]) == ["shirt", "tie", "belt", "jacket"]
+```
+
+### dijkstra — shortest paths with non-negative weights ✓
+
+Weighted edges are modelled with a small `record Edge`; the map-literal value
+`{ to: "b", weight: 1 }` is a record literal typed by the `list of Edge` it lands in.
+Each round picks the closest unvisited node and relaxes its edges.
+
+```pedro
+record Edge:
+    to: text
+    weight: whole
+
+task dijkstra(graph: map of text to list of Edge, nodes: list of text, start: text) returns map of text to whole:
+    let infinity = 1000000
+    let dist = empty map of text to whole
+    for each node in nodes:
+        set dist[node] to infinity
+    set dist[start] to 0
+    let visited = []
+    repeat count of nodes times:
+        let current = ""
+        let best = infinity
+        for each node in nodes:
+            when node not in visited and dist[node] is at most best:
+                current = node
+                best = dist[node]
+        add current to visited
+        for each edge in graph[current]:
+            let candidate = dist[current] + edge.weight
+            when candidate is less than dist[edge.to]:
+                set dist[edge.to] to candidate
+    return dist
+
+expect:
+    given w = { "a": [{ to: "b", weight: 1 }, { to: "c", weight: 4 }], "b": [{ to: "c", weight: 2 }, { to: "d", weight: 5 }], "c": [{ to: "d", weight: 1 }], "d": [] }
+    dijkstra(w, ["a", "b", "c", "d"], "a") == { "a": 0, "b": 1, "c": 3, "d": 4 }
+```
+
+`depth_first`, `topological_sort`, and `dijkstra` all live in
+`examples/cookbook/graphs.pedro`.
+
+---
+
+## Codecs
+
+### rle_encode / rle_decode — run-length encoding ✓
+
+```pedro
+task rle_encode(input: text) returns text:
+    let chars = characters of input
+    when chars is empty:
+        return ""
+    let result = ""
+    let current = first of chars
+    let run = 0
+    for each ch in chars:
+        when ch is current:
+            increase run by 1
+        otherwise:
+            result = "{result}{run}{current}"
+            current = ch
+            run = 1
+    result = "{result}{run}{current}"
+    return result
+
+task rle_decode(input: text) returns text:
+    let result = ""
+    let run = 0
+    for each ch in characters of input:
+        when ch in "0123456789":
+            run = run * 10 + (ch as whole)
+        otherwise:
+            repeat run times:
+                result = "{result}{ch}"
+            run = 0
+    return result
+
+expect:
+    rle_encode("aaabbc") == "3a2b1c"
+    rle_decode("3a2b1c") == "aaabbc"
+    rle_decode("12x") == "xxxxxxxxxxxx"
+```
+
+### caesar cipher — rotate letters by a fixed shift ✓
+
+Pedro has no character-code arithmetic, so we look each letter up in the alphabet
+and rotate its index; non-letters pass through. Decrypting is encrypting with the
+complementary (non-negative) shift, and a `for all` property proves the round trip.
+
+```pedro
+task letter_index(letters: list of text, target: text) returns whole:
+    for each i, ch in letters:
+        when ch is target:
+            return i
+    return -1
+
+task caesar_encrypt(input: text, shift: whole) returns text:
+    let letters = characters of "abcdefghijklmnopqrstuvwxyz"
+    let result = ""
+    for each ch in characters of input:
+        let idx = letter_index(letters, ch)
+        when idx is -1:
+            result = "{result}{ch}"
+        otherwise:
+            let rotated = (idx + shift) mod 26
+            result = "{result}{item at rotated in letters}"
+    return result
+
+task caesar_decrypt(input: text, shift: whole) returns text:
+    return caesar_encrypt(input, 26 - (shift mod 26))
+
+expect:
+    caesar_encrypt("hello, world", 3) == "khoor, zruog"
+    caesar_decrypt("khoor, zruog", 3) == "hello, world"
+    for all n from 0 to 25: caesar_decrypt(caesar_encrypt("pedro", n), n) is "pedro"
+```
+
+Both codecs are in `examples/cookbook/codecs.pedro`.
 
 ---
 

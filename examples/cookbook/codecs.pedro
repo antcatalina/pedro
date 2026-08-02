@@ -1,0 +1,76 @@
+# Small codecs: run-length encoding and the Caesar cipher. Checked by pedroc.
+target: python
+
+# --- Run-length encoding / decoding ---
+task rle_encode(input: text) returns text:
+    let chars = characters of input
+    when chars is empty:
+        return ""
+    let result = ""
+    let current = first of chars
+    let run = 0
+    for each ch in chars:
+        when ch is current:
+            increase run by 1
+        otherwise:
+            result = "{result}{run}{current}"
+            current = ch
+            run = 1
+    result = "{result}{run}{current}"
+    return result
+
+expect:
+    rle_encode("aaabbc") == "3a2b1c"
+    rle_encode("wwwwww") == "6w"
+    rle_encode("x") == "1x"
+    rle_encode("") == ""
+
+task rle_decode(input: text) returns text:
+    let result = ""
+    let run = 0
+    for each ch in characters of input:
+        when ch in "0123456789":
+            run = run * 10 + (ch as whole)
+        otherwise:
+            repeat run times:
+                result = "{result}{ch}"
+            run = 0
+    return result
+
+expect:
+    rle_decode("3a2b1c") == "aaabbc"
+    rle_decode("12x") == "xxxxxxxxxxxx"
+    rle_decode("") == ""
+
+# --- Caesar cipher ---
+# No character-code arithmetic in Pedro, so we look each letter up in the alphabet
+# and rotate its index; non-letters pass through unchanged.
+task letter_index(letters: list of text, target: text) returns whole:
+    for each i, ch in letters:
+        when ch is target:
+            return i
+    return -1
+
+task caesar_encrypt(input: text, shift: whole) returns text:
+    let letters = characters of "abcdefghijklmnopqrstuvwxyz"
+    let result = ""
+    for each ch in characters of input:
+        let idx = letter_index(letters, ch)
+        when idx is -1:
+            result = "{result}{ch}"
+        otherwise:
+            let rotated = (idx + shift) mod 26
+            result = "{result}{item at rotated in letters}"
+    return result
+
+# Decrypting is encrypting with the complementary shift (kept non-negative so the
+# `mod` matches on both backends).
+task caesar_decrypt(input: text, shift: whole) returns text:
+    return caesar_encrypt(input, 26 - (shift mod 26))
+
+expect:
+    caesar_encrypt("abc", 3) == "def"
+    caesar_encrypt("xyz", 3) == "abc"
+    caesar_encrypt("hello, world", 3) == "khoor, zruog"
+    caesar_decrypt("khoor, zruog", 3) == "hello, world"
+    for all n from 0 to 25: caesar_decrypt(caesar_encrypt("pedro", n), n) is "pedro"

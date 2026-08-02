@@ -1,0 +1,43 @@
+# Array algorithms: matrix transpose and sliding-window maximum. Checked by pedroc.
+target: python
+
+# --- Matrix transpose (rows become columns) ---
+task transpose(matrix: list of list of whole) returns list of list of whole:
+    when matrix is empty:
+        return []
+    let rows = count of matrix
+    let cols = count of (first of matrix)
+    let result = []
+    for each j in numbers from 0 to cols - 1:
+        let new_row = []
+        for each i in numbers from 0 to rows - 1:
+            add (item at j in (item at i in matrix)) to new_row
+        add new_row to result
+    return result
+
+expect:
+    transpose([[1, 2, 3], [4, 5, 6]]) == [[1, 4], [2, 5], [3, 6]]
+    transpose([[1], [2], [3]]) == [[1, 2, 3]]
+    transpose([[7]]) == [[7]]
+    transpose([]) == []
+
+# --- Sliding-window maximum (max of every contiguous window of size k) ---
+task sliding_window_max(items: list of whole, k: whole) returns list of whole:
+    let n = count of items
+    let result = []
+    when k is at most 0 or k is greater than n:
+        return result
+    for each start in numbers from 0 to n - k:
+        let window_max = item at start in items
+        for each offset in numbers from 1 to k - 1:
+            let value = item at start + offset in items
+            when value is greater than window_max:
+                window_max = value
+        add window_max to result
+    return result
+
+expect:
+    sliding_window_max([1, 3, -1, -3, 5, 3, 6, 7], 3) == [3, 3, 5, 5, 6, 7]
+    sliding_window_max([4, 2, 12, 11, -5], 2) == [4, 12, 12, 11]
+    sliding_window_max([9, 8, 7], 1) == [9, 8, 7]
+    sliding_window_max([1, 2], 5) == []

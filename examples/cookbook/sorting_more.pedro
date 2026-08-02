@@ -1,0 +1,34 @@
+# More sorting algorithms. Compiled and checked by pedroc.
+target: python
+
+task selection_sort(items: list of whole) returns list of whole:
+    let result = copy of items
+    let n = count of result
+    for each i in numbers from 0 to n - 1:
+        let min_index = i
+        for each j in numbers from i + 1 to n - 1:
+            when (item at j in result) is less than (item at min_index in result):
+                min_index = j
+        swap items at i and min_index in result
+    return result
+
+expect:
+    selection_sort([3, 1, 2]) == [1, 2, 3]
+    selection_sort([5, 4, 3, 2, 1]) == [1, 2, 3, 4, 5]
+    selection_sort([]) == []
+    for all n from 0 to 40: count of selection_sort(numbers from 0 to n) == n + 1
+
+task insertion_sort(items: list of whole) returns list of whole:
+    let result = copy of items
+    let n = count of result
+    for each i in numbers from 1 to n - 1:
+        let j = i
+        while j is greater than 0 and (item at j - 1 in result) is greater than (item at j in result):
+            swap items at j - 1 and j in result
+            decrease j by 1
+    return result
+
+expect:
+    insertion_sort([3, 1, 2]) == [1, 2, 3]
+    insertion_sort([9, 7, 8, 6, 5]) == [5, 6, 7, 8, 9]
+    insertion_sort([42]) == [42]

@@ -5,6 +5,47 @@ resume cleanly across sessions.
 
 ---
 
+## 2026-08-02 — Cookbook grown by 11 classic algorithms (all green on BOTH backends)
+
+Broadened the teaching corpus so the authoring LLM sees more idiomatic Pedro. Added
+11 algorithms as `expect`-checked programs, grouped into 5 new files under
+`examples/cookbook/`; **no compiler change** — every algorithm uses only currently
+supported constructs, so no `todo` holes were needed.
+
+**New files (each `check`ed on `python,typescript`; all agree):**
+- `sorting_more.pedro` — `selection_sort`, `insertion_sort` (in-place via
+  `swap items at … in …`; a `for all n from 0 to 40` length property on selection).
+- `graphs.pedro` — `depth_first` (purely functional DFS, no shared mutation → TS-safe),
+  `topological_sort` (Kahn's, in-degree map), `dijkstra` (weighted edges via a
+  `record Edge`; the map-literal edge values are context-typed record literals).
+- `dp_more.pedro` — `lcs_length`, `knapsack` (0/1). Both use a **flat map keyed by an
+  interpolated `"row,col"` string**, because Pedro's `set map[key] to` is single-index
+  (there is no `set table[i][j]`).
+- `codecs.pedro` — `rle_encode`/`rle_decode` (decode uses `ch as whole` to parse digit
+  chars), `caesar_encrypt`/`caesar_decrypt` (no char-code arithmetic in Pedro, so it
+  looks each letter up in the alphabet and rotates the index; `mod` kept non-negative
+  for backend parity; a `for all n from 0 to 25` round-trip property).
+- `arrays.pedro` — `transpose` (`list of list of whole`, nested `item at j in (item at
+  i in matrix)`), `sliding_window_max`.
+
+**Docs.** `docs/cookbook.md` updated: new Sorting entries, new **Arrays & matrices** and
+**Codecs** sections, DFS/topo/Dijkstra under Graphs, LCS/knapsack under DP; Contents
+list + the machine-verified count refreshed (**34 ✓**), and the stale
+`build/cookbook_check.py` harness reference replaced with the real one
+(`python tools/regress.py`, incl. the differential TS lane).
+
+**Verified.** `python3 tools/regress.py` GREEN — corpus 78 → **117 expectations**,
+TS lane 11 → **16/16 corpus programs green**; `tools/differential.py` PASS (python+
+typescript agree on the whole corpus); `tools/check_docs.py` clean; fuzz clean.
+
+**Gaps recorded (for a future run).** Nothing was faked, but two ergonomic gaps
+surfaced while writing these: (1) no multi-index element assignment (`set m[i][j] to`
+/ `set list[i] to`) — 2-D DP has to key a flat map by a stringified coordinate;
+(2) no character-code conversion (`"a" as whole` parses a numeral, it is not `ord`),
+so Caesar has to alphabet-index. Both are candidate conveniences, not blockers.
+
+---
+
 ## 2026-08-02 — Normative spec LANDED (`docs/SPEC.md` + `docs/grammar.md`), reconciled with the compiler
 
 Turned the long-planned `docs/SPEC.md` 🧭 into a real, normative specification and

@@ -1,0 +1,62 @@
+# More dynamic programming: longest common subsequence, 0/1 knapsack. Checked by pedroc.
+target: python
+#
+# Both use a flat table keyed by an interpolated "row,col" string, since Pedro has
+# single-index `set map[key] to` (not `set table[i][j]`). The keys are built with
+# string interpolation and every cell is filled before it is read.
+
+# --- Longest common subsequence (length) ---
+task lcs_length(a: text, b: text) returns whole:
+    let ca = characters of a
+    let cb = characters of b
+    let m = count of ca
+    let n = count of cb
+    let dp = empty map of text to whole
+    for each i in numbers from 0 to m:
+        for each j in numbers from 0 to n:
+            when i is 0 or j is 0:
+                set dp["{i},{j}"] to 0
+            otherwise:
+                when (item at i - 1 in ca) is (item at j - 1 in cb):
+                    set dp["{i},{j}"] to dp["{i - 1},{j - 1}"] + 1
+                otherwise:
+                    let up = dp["{i - 1},{j}"]
+                    let left = dp["{i},{j - 1}"]
+                    when up is at least left:
+                        set dp["{i},{j}"] to up
+                    otherwise:
+                        set dp["{i},{j}"] to left
+    return dp["{m},{n}"]
+
+expect:
+    lcs_length("ABCBDAB", "BDCAB") == 4
+    lcs_length("abc", "abc") == 3
+    lcs_length("abc", "xyz") == 0
+    lcs_length("", "anything") == 0
+
+# --- 0/1 knapsack (maximum value within a weight capacity) ---
+task knapsack(weights: list of whole, values: list of whole, capacity: whole) returns whole:
+    let n = count of weights
+    let dp = empty map of text to whole
+    for each c in numbers from 0 to capacity:
+        set dp["0,{c}"] to 0
+    for each i in numbers from 1 to n:
+        let w = item at i - 1 in weights
+        let v = item at i - 1 in values
+        for each c in numbers from 0 to capacity:
+            let without = dp["{i - 1},{c}"]
+            when w is at most c:
+                let with_item = v + dp["{i - 1},{c - w}"]
+                when with_item is greater than without:
+                    set dp["{i},{c}"] to with_item
+                otherwise:
+                    set dp["{i},{c}"] to without
+            otherwise:
+                set dp["{i},{c}"] to without
+    return dp["{n},{capacity}"]
+
+expect:
+    knapsack([1, 3, 4, 5], [1, 4, 5, 7], 7) == 9
+    knapsack([2, 3, 4], [3, 4, 5], 5) == 7
+    knapsack([5], [10], 3) == 0
+    knapsack([], [], 10) == 0
