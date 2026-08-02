@@ -27,6 +27,7 @@ from .annotate import annotate
 from .capabilities import check_capabilities
 from . import nodes as N
 from .codegen_python import generate, _gen_expr
+from .hashing import source_hash
 
 _CMP = {"==", "!=", "<", "<=", ">", ">="}
 
@@ -171,7 +172,7 @@ def check(source, filename="<pedro>", target="python", timeout=DEFAULT_TIMEOUT,
         report["summary"] = f"target {target!r} is not runnable by `check` yet"
         return report
 
-    code = generate(program, filename)
+    code = generate(program, filename, source_hash(source))
     steps = _build_steps(program, forall_cap)
     adapters = _adapters_source() if surface else None
     run = _run_expectations(code, steps, timeout, adapters, cpu_timeout)

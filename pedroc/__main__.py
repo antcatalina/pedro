@@ -2,6 +2,7 @@
 
     python -m pedroc build <file.pedro> [-o <out.py>] [--target python]
     python -m pedroc check <file.pedro> [--json] [--target python]
+    python -m pedroc verify <file.pedro> <generated-output> [--json]
     python -m pedroc permissions <file.pedro> [--format claude-settings|json]
 """
 import json
@@ -10,13 +11,15 @@ import sys
 
 from . import compile_source, PedroSyntaxError, PedroTypeError, PedroCapabilityError
 from .check import check, check_targets, FORALL_CAP
+from .verify import verify
 from .permissions import render as render_permissions
 
 BUILD_USAGE = "usage: python -m pedroc build <file.pedro> [-o <out.py>] [--target python]"
 CHECK_USAGE = ("usage: python -m pedroc check <file.pedro> [--json] "
                "[--target python | --targets python,typescript] [--forall-cap N]")
+VERIFY_USAGE = "usage: python -m pedroc verify <file.pedro> <generated-output> [--json]"
 PERMS_USAGE = "usage: python -m pedroc permissions <file.pedro> [--format claude-settings|json]"
-USAGE = BUILD_USAGE + "\n" + CHECK_USAGE + "\n" + PERMS_USAGE
+USAGE = BUILD_USAGE + "\n" + CHECK_USAGE + "\n" + VERIFY_USAGE + "\n" + PERMS_USAGE
 
 
 def _read(path):
@@ -133,6 +136,35 @@ def _cmd_check(args):
     return 0 if report["ok"] else 1
 
 
+def _cmd_verify(args):
+    if len(args) < 2:
+        print(VERIFY_USAGE, file=sys.stderr)
+        return 2
+    infile = args[0]
+    outfile = args[1]
+    as_json = False
+    i = 2
+    while i < len(args):
+        if args[i] == "--json":
+            as_json = True
+            i += 1
+        else:
+            print(f"unknown or incomplete argument: {args[i]}", file=sys.stderr)
+            return 2
+    try:
+        source = _read(infile)
+        generated = _read(outfile)
+    except OSError as e:
+        print(f"error: {e}", file=sys.stderr)
+        return 1
+    report = verify(source, generated, source_name=infile, output_name=outfile)
+    if as_json:
+        print(json.dumps(report, separators=(",", ":")))
+    else:
+        print(report["summary"])
+    return 0 if report["ok"] else 1
+
+
 def _cmd_permissions(args):
     if not args:
         print(PERMS_USAGE, file=sys.stderr)
@@ -243,6 +275,8 @@ def main(argv):
         return _cmd_build(argv[1:])
     if cmd == "check":
         return _cmd_check(argv[1:])
+    if cmd == "verify":
+        return _cmd_verify(argv[1:])
     if cmd == "permissions":
         return _cmd_permissions(argv[1:])
     print(USAGE, file=sys.stderr)

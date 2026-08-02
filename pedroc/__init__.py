@@ -9,6 +9,7 @@ from .annotate import annotate
 from .capabilities import check_capabilities
 from .codegen_python import generate as generate_python
 from .codegen_ts import generate as generate_ts
+from .hashing import source_hash
 from .errors import PedroSyntaxError, PedroTypeError, PedroCapabilityError
 
 __all__ = ["compile_source", "PedroSyntaxError", "PedroTypeError", "PedroCapabilityError"]
@@ -30,4 +31,4 @@ def compile_source(source, filename="<pedro>", target="python"):
     if cap_errors:
         raise cap_errors[0]
     program.target = target
-    return _TARGETS[target](program, filename)
+    return _TARGETS[target](program, filename, source_hash(source))

@@ -47,6 +47,12 @@ check it:
    (or `--target typescript -o out.ts` — the same source compiles to Python and
    TypeScript, and both are verified to agree).
 
+Every generated file starts with a `Do not edit by hand` banner that embeds a hash
+of the SOURCE (`source-hash: <hex>`). Never hand-edit generated output — change the
+`.pedro` and rebuild. `python -m pedroc verify <file>.pedro <out.py>` re-checks that
+hash and reports `match` / `stale` (source changed — rebuild) / `drift` (output was
+hand-edited).
+
 To verify a program behaves **identically on every backend**, run
 `python -m pedroc check <file>.pedro --targets python,typescript`: it compiles and
 runs each target's `expect` suite and reports whether all targets agree on every

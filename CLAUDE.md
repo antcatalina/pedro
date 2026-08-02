@@ -30,13 +30,18 @@ structured feedback — so the language must stay small, regular, and verifiable
   collision handling), `adapters.py` (in-memory reference adapters injected by
   `check`), `permissions.py` (the capability → agent-permission bridge: derives a
   Claude Code `settings.json`-shaped manifest from the declared surface, behind
-  `pedroc permissions`), `suggest.py` (deterministic
+  `pedroc permissions`), `hashing.py` (the source content-hash + the
+  `Do not edit by hand` banner render/parse — the single source of truth for the
+  banner format, stamped by both codegens), `verify.py` (the tamper-evidence pass
+  → match/stale/drift, behind `pedroc verify`), `suggest.py` (deterministic
   edit-distance "did you mean X?"), `errors.py`, `__main__.py` (CLI),
   `__init__.py` (`compile_source`). `pedro_capabilities.py` (repo root) re-exports
   the reference adapters so built examples run.
-- `tests/` — `test_diagnostics.py` (structured-diagnostic tests) and
-  `test_sandbox.py` (subprocess timeout/crash isolation); both are pytest-shaped
-  but also self-runnable, and `tools/regress.py` invokes them.
+- `tests/` — `test_diagnostics.py` (structured-diagnostic tests),
+  `test_sandbox.py` (subprocess timeout/crash isolation), `test_packaging.py`
+  (installable-CLI + byte-identical codegen), and `test_verify.py` (source-hash
+  banner + stale/drift detection); all pytest-shaped but also self-runnable, and
+  `tools/regress.py` invokes them.
 - `examples/cookbook/*.pedro` — the regression corpus (incl. `tickets.pedro`,
   which models data with a `record` + an `enum`; and `credentials.pedro`, which
   uses the `database` + `crypto` capabilities).
@@ -81,6 +86,10 @@ pedroc check <file>.pedro --json
 # check EVERY target and assert they agree, expectation-for-expectation (a
 # disagreement is a codegen bug, reported down to which target lost which expectation)
 pedroc check <file>.pedro --targets python,typescript [--json]
+
+# verify: is a generated file still the un-touched output of its source? Reads the
+# source-hash from the file's banner, recomputes it, reports match/stale/drift
+pedroc verify <file>.pedro <generated-output> [--json]
 
 # permissions: derive an agent-harness permission manifest from the declared
 # capability surface (Claude Code settings.json shape by default)
@@ -194,6 +203,10 @@ program's declared `capabilities` surface; `check --json` is compact (null field
 timeout + a POSIX `RLIMIT_CPU` backstop + restricted env,
 `pedroc/_expect_runner.py`), reporting a non-terminating or crashing program as
 `status:"timeout"`/`"error"` instead of hanging.
+**Tamper-evident output:** every generated file's `Do not edit by hand` banner
+embeds a 12-hex hash of the `.pedro` **source** (`source-hash: …`); `pedroc verify
+<file>.pedro <output>` recomputes it and reports match / stale (source changed) /
+drift (output hand-edited) — `pedroc/hashing.py` + `pedroc/verify.py`.
 
 **Designed but NOT yet in the compiler** (see `WORKLOG.md` roadmap, highest first):
 the remaining capability verbs (db `update`/`delete`, `http`, `files`, `time`,

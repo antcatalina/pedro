@@ -5,6 +5,66 @@ resume cleanly across sessions.
 
 ---
 
+## 2026-08-02 — Tamper-evident generated output (source-hash banner + `pedroc verify`)
+
+The 🧭 `verify-drift-detection` bet is now a real, documented feature. Every file
+`pedroc build` emits carries a short hash of its **`.pedro` source** in the
+`Do not edit by hand` banner, and a new `pedroc verify` command detects when a
+generated file no longer matches its source.
+
+**Banner format (compiler contract, README rule 8 — a single deliberate change).**
+```
+# Generated from <file>.pedro by pedroc v0.1 (target: <target>) source-hash: <12-hex>. Do not edit by hand.
+```
+(`//` prefix for TypeScript.) The hash is 12 hex chars of SHA-256 of the SOURCE
+bytes — **not** the generated output — so it stays as deterministic as codegen
+itself: same source + same compiler version → same hash → byte-identical file. A
+clean `verify` never flickers.
+
+**What landed.**
+- **`pedroc/hashing.py`** (new) — `source_hash(src)` (12-hex SHA-256), `banner(...)`
+  (renders the banner; the single source of truth for its format, called by both
+  codegens), and `parse_banner(text)` (extracts filename/target/hash for `verify`).
+- **`pedroc/codegen_python.py` + `pedroc/codegen_ts.py`** — `generate()` takes an
+  optional `source_hash=` and stamps it via `hashing.banner(...)`. `None` renders as
+  `source-hash: unknown` (only for callers without the source; never build/`check`).
+- **`pedroc/__init__.py` + `pedroc/check.py`** — pass `source_hash(source)` through
+  so both the built output and the code `check` runs carry the real hash.
+- **`pedroc/verify.py`** (new) + **`pedroc verify <file>.pedro <output> [--json]`**
+  in `__main__.py` — reads the stamped hash, recomputes it from the current source,
+  and reports one of: **match** (hash matches AND bytes match a fresh compile; exit
+  0), **stale** (source hash changed — the `.pedro` moved on; exit 1), **drift**
+  (hash still matches but bytes differ from a fresh compile — the output was
+  hand-edited; exit 1), or **no-banner** (not a pedroc file). The two failure modes
+  are distinguished in the one-line message and in the `--json`
+  `status`/`stamped_hash`/`current_hash` fields. `--json` mirrors `check`'s compact
+  style.
+- **`tests/test_verify.py`** (new, wired into `tools/regress.py`) — proves the
+  banner carries the source hash on both backends, that the hash is of the source
+  (same hash across targets), and the full end-to-end story: generate → verify clean;
+  hand-edit the output → `drift`; change the source → `stale`; and that drift ≠ stale.
+- **`tests/test_packaging.py`** — the byte-identical-codegen assertion now computes
+  the expected banner from `source_hash(_SAMPLE)` so it tracks the new field.
+- **Docs** — README rule 8 rewritten (tamper-evident, with the new banner shape),
+  the three in-README "actual output" banners updated to the real new hashes, a new
+  "Verifying generated output" subsection under "Using Pedro today", the 🧭 bet marked
+  LANDED, and the Done/coverage lines updated. `docs/language-card.md` adds a short
+  authoring-loop note (never hand-edit output; `verify` catches it). `CLAUDE.md`
+  "How to run" + file map updated. `python tools/check_docs.py` clean.
+
+**Verified:** `python tools/regress.py` green end-to-end (exit 0), including the new
+7 verify tests. Hand-checked all four `verify` outcomes on `examples/math.pedro`
+(clean/hand-edited/stale/no-banner) on both Python and TypeScript output.
+
+**Determinism unchanged:** the hash is of the source, so anything that already
+compiled still produces byte-identical output for the same source + compiler version;
+only the banner line gained a stable `source-hash:` field.
+
+**Next:** nothing blocking. A natural follow-on: teach the `skills/write-pedro/`
+authoring skill to run `pedroc verify` after `build` in its loop.
+
+---
+
 ## 2026-08-01 — `pedroc` is now an installable CLI (`pip install -e .`, no more `PYTHONPATH=.`)
 
 Until now every invocation needed `PYTHONPATH=. python -m pedroc …`. `pedroc` is

@@ -31,8 +31,11 @@ _SAMPLE = (
     "    inc(1) == 2\n"
 )
 
+from pedroc.hashing import source_hash  # noqa: E402
+
 _EXPECTED_PY = (
-    "# Generated from inc.pedro by pedroc v0.1 (target: python). Do not edit by hand.\n\n"
+    f"# Generated from inc.pedro by pedroc v0.1 (target: python) "
+    f"source-hash: {source_hash(_SAMPLE)}. Do not edit by hand.\n\n"
     "def inc(x: int) -> int:\n"
     "    return (x + 1)\n\n"
     'if __name__ == "__main__":\n'

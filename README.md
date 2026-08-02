@@ -109,7 +109,7 @@ expect:
 This is the **actual output** of `pedroc build examples/cookbook/recover.pedro`:
 
 ```python
-# Generated from recover.pedro by pedroc v0.1 (target: python). Do not edit by hand.
+# Generated from recover.pedro by pedroc v0.1 (target: python) source-hash: a60170503b5a. Do not edit by hand.
 
 class PedroError(Exception):
     pass
@@ -185,7 +185,7 @@ literal**, typed by context: where a `LineItem` is expected, it becomes one. The
 real Python output (`pedroc build examples/order_total.pedro`) — record → `@dataclass`:
 
 ```python
-# Generated from order_total.pedro by pedroc v0.1 (target: python). Do not edit by hand.
+# Generated from order_total.pedro by pedroc v0.1 (target: python) source-hash: 0cf9be17abef. Do not edit by hand.
 
 from __future__ import annotations
 
@@ -210,7 +210,7 @@ def order_total(items: list[LineItem], discount_percent: float) -> float:
 …and the real TypeScript output (`--target typescript`) — record → `interface` + object literal:
 
 ```typescript
-// Generated from order_total.pedro by pedroc v0.1 (target: typescript). Do not edit by hand.
+// Generated from order_total.pedro by pedroc v0.1 (target: typescript) source-hash: 0cf9be17abef. Do not edit by hand.
 // ... __eq / __in / __sort / __concat runtime-helper preamble (see the note above) ...
 interface LineItem {
   name: string;
@@ -594,8 +594,9 @@ This is the part that makes Pedro reliable. When a `.pedro` file is compiled, th
 5. **Resolve ambiguity conservatively.** If a line has one obviously-simplest correct reading, take it and add a `# pedro-note: …` comment. If it's genuinely unclear, emit `# PEDRO-AMBIGUITY: …` and ask the author rather than guessing.
 6. **Satisfy every `expect` block.** Generated code must pass all stated expectations; today they're emitted as runnable assertions with a pass/fail summary line.
 7. **Avoid name collisions.** — **implemented.** If a capability adapter import would collide with a user identifier, `pedroc` renames the *import* (e.g. the email capability imports as `mailer`) — never the user's names.
-8. **Stamp the output.** Every generated file begins with:
-   `# Generated from <file>.pedro by pedroc v0.1 (target: <target>). Do not edit by hand.`
+8. **Stamp the output — tamper-evidently.** — **implemented.** Every generated file begins with a banner that embeds a short content hash of the **`.pedro` source** (not of the generated output — so the hash is as deterministic as codegen itself):
+   `# Generated from <file>.pedro by pedroc v0.1 (target: <target>) source-hash: <12-hex>. Do not edit by hand.`
+   `pedroc verify <file>.pedro <generated-output>` reads that hash, recomputes it from the current source, and reports drift — see "Verifying generated output" below.
 9. **Be deterministic.** The same source + same compiler version produces byte-identical output. Don't add logging, caching, comments, or features that weren't written.
 
 ---
@@ -639,6 +640,31 @@ reported as `skipped` for them, not a disagreement. Passing a single target
 (`--targets python`) is identical to a plain `check` for that target. This promotes
 [`tools/differential.py`](tools/differential.py)'s cross-backend agreement check from a
 dev-only test tool into a guarantee any user's own code can assert.
+
+**`verify` — is this generated file still trustworthy?** Every file `pedroc build`
+emits carries a hash of its `.pedro` **source** in the "do not edit by hand" banner
+(rule 8). `pedroc verify <file>.pedro <generated-output>` reads that stamped hash,
+recomputes it from the current source, and tells you which of three states you're in:
+
+```
+pedroc build examples/cookbook/numbers.pedro -o build/numbers.py
+pedroc verify examples/cookbook/numbers.pedro build/numbers.py        # => OK (match)
+pedroc verify examples/cookbook/numbers.pedro build/numbers.py --json  # same, machine-readable
+```
+
+- **match** (exit `0`) — the banner hash matches the source *and* the file's bytes
+  match a fresh compile. It's the genuine, un-touched output of that source.
+- **stale** (exit `1`) — the source hash changed, so the `.pedro` was edited after
+  this file was generated. **Rebuild it.**
+- **drift** (exit `1`) — the hash still matches the source, but the file's bytes no
+  longer match what `pedroc` produces from it: the generated file was **hand-edited**
+  after the fact (someone bypassed the compiler). Regenerate to discard the edits.
+
+The two failure reasons are distinguished in the message and in the `--json`
+`status`/`stamped_hash`/`current_hash` fields, so an agent or CI step can tell "my
+source moved on" from "someone patched the output" without guessing. Because the hash
+is of the *source*, it's as deterministic as codegen itself — same source + same
+compiler version → same hash → byte-identical file, so a clean `verify` never flickers.
 
 `check` is the oracle for the authoring loop: emit Pedro → `check` → read the JSON (`errors`, `holes`, and failing `expectations` with `got X, expected Y`) → fix. Diagnostics are built to be *read by a model*: each error carries a stable `code`, `line` **and `col`**, an actionable `hint`, a source `snippet` with a `^` caret, and — for a misspelled identifier, task, or keyword — a nearest-match `suggestion` ("did you mean X?"). The JSON is compact (null fields omitted). The generated program is run in a **sandboxed subprocess** with a wall-clock timeout and a restricted environment, so a non-terminating or hostile program is reported as a structured `status:"timeout"`/`"error"` instead of hanging or compromising the compiler. The **authoring layer** — turning a plain-English request into Pedro and driving that loop — is the Claude Code skill in `skills/write-pedro/`; the compact spec it reads is [docs/language-card.md](docs/language-card.md).
 
@@ -722,7 +748,7 @@ Repo-specific conventions and guardrails for anyone — or any Claude agent — 
 
 Live status and next steps live in [WORKLOG.md](WORKLOG.md). In brief:
 
-- **Done** — the language design; a real deterministic compiler (`pedroc`) for the scalar/list/map/`record`/`enum`/control-flow subset → **Python and TypeScript**; **capabilities + the swappable adapter layer** (Python; database/email/crypto verbs, undeclared-use is a compile error, the declared surface reported by `check --json`); the **capability → agent-permission bridge** (`pedroc permissions`, see above); the `pedroc check` loop, typed holes, and structured diagnostics, sandboxed in a subprocess; the [cookbook](docs/cookbook.md) as a passing regression suite (`tools/regress.py`) on both backends; a differential tester + seedable grammar fuzzer running live over both backends (`tools/differential.py`, `tools/fuzz.py`); the cross-target agreement check promoted into a first-class `pedroc check --targets` guarantee; **property-based `expect` blocks** (`for all n from a to b: <flag>`, enumerated over the bounded range with the first counterexample reported, on both backends); and a mechanical doc-drift backstop (`tools/check_docs.py`) wired into CI.
+- **Done** — the language design; a real deterministic compiler (`pedroc`) for the scalar/list/map/`record`/`enum`/control-flow subset → **Python and TypeScript**; **capabilities + the swappable adapter layer** (Python; database/email/crypto verbs, undeclared-use is a compile error, the declared surface reported by `check --json`); the **capability → agent-permission bridge** (`pedroc permissions`, see above); the `pedroc check` loop, typed holes, and structured diagnostics, sandboxed in a subprocess; the [cookbook](docs/cookbook.md) as a passing regression suite (`tools/regress.py`) on both backends; a differential tester + seedable grammar fuzzer running live over both backends (`tools/differential.py`, `tools/fuzz.py`); the cross-target agreement check promoted into a first-class `pedroc check --targets` guarantee; **property-based `expect` blocks** (`for all n from a to b: <flag>`, enumerated over the bounded range with the first counterexample reported, on both backends); **tamper-evident generated output** (a source content-hash stamped in every banner + `pedroc verify` to detect stale/hand-edited output); and a mechanical doc-drift backstop (`tools/check_docs.py`) wired into CI.
 - **Next (highest priority first)** — the remaining capability verbs (db `update`/`delete`, `http`/`files`/`time`/`random`) + the TypeScript adapter path; then `docs/SPEC.md`.
 
 ### Committed: bets that make Pedro distinctly agent-native 🧭
@@ -732,7 +758,7 @@ Approved 2026-07-28, queued on AntMac, not built yet — each depends on a "Next
 - ~~**Capability manifest → agent permission bridge** (`capability-permission-bridge`)~~ — **LANDED.** `pedroc permissions <file>.pedro` derives the manifest from the declared capability surface; see the "Built for agent-heavy teams" section above for the mapping table.
 - ~~**Cross-target consistency as a CLI guarantee**~~ — **LANDED** (2026-07-31). `pedroc check <file>.pedro --targets python,typescript` compiles the program to every listed target, runs each target's `expect` suite, and reports whether they all **agree** on every expectation; a disagreement is named down to the exact expectation and what each target got (a compiler bug report). "This program behaves identically everywhere" is now something any user's own code can assert, not just the compiler's own test suite. See "Using Pedro today" above.
 - ~~**Property-based `expect` blocks** (`property-based-expect`)~~ — **LANDED** (2026-08-01). `expect:` now takes a bounded quantified form, `for all n from a to b: <flag>`, enumerated and checked over the inclusive range (first counterexample fails the check with the exact value; ranges are capped for speed, `--forall-cap N` to override) — a strict superset of the example-based syntax, on both backends. See "Verification" above and [`examples/cookbook/properties.pedro`](examples/cookbook/properties.pedro).
-- **Tamper-evident generated output** (`verify-drift-detection`). Embeds a source content-hash in the "do not edit by hand" banner; `pedroc verify <file>.pedro <output>` detects drift — catches the common failure mode where a human hand-patches generated code and an agent later regenerates over it (or vice versa).
+- ~~**Tamper-evident generated output** (`verify-drift-detection`)~~ — **LANDED** (2026-08-02). Every generated file's "do not edit by hand" banner embeds a short hash of the `.pedro` **source**; `pedroc verify <file>.pedro <output>` recomputes it and reports **match** / **stale** (source changed — rebuild) / **drift** (output hand-edited — someone bypassed the compiler), the two failure modes distinguished in the message and `--json`. Catches the common failure where a human hand-patches generated code and an agent later regenerates over it (or vice versa). See "Verifying generated output" under "Using Pedro today" above.
 
 ### Keeping the docs honest — mechanically, not just by reminder
 

@@ -5,6 +5,7 @@ the parsed AST — deterministic and never wrong, at the cost of a few parens.
 """
 from . import nodes as N
 from .capabilities import declared_capabilities, adapter_names
+from .hashing import banner as _banner
 
 TYPE_MAP = {"text": "str", "whole": "int", "number": "float", "flag": "bool", "nothing": "None"}
 BINOP_MAP = {"mod": "%", "div": "//", "followed_by": "+"}
@@ -100,7 +101,7 @@ def _cap_import(caps):
     return f"from pedro_capabilities import {', '.join(specs)}"
 
 
-def generate(program, filename="<pedro>"):
+def generate(program, filename="<pedro>", source_hash=None):
     global _records, _typenames, _adapters
     _match_counter[0] = 0  # reset per call → deterministic temp names
     records = [it for it in program.items if isinstance(it, N.Record)]
@@ -112,7 +113,7 @@ def generate(program, filename="<pedro>"):
     _adapters = adapter_names(program)
 
     lines = [
-        f"# Generated from {filename} by pedroc v0.1 (target: {program.target}). Do not edit by hand.",
+        _banner("#", filename, program.target, source_hash),
         "",
     ]
     # `from __future__ import annotations` makes dataclass field annotations lazy

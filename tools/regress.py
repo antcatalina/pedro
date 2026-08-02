@@ -115,6 +115,13 @@ def main(argv=None):
     if not run_packaging_tests():
         all_ok = False
 
+    # ...and the tamper-evidence tests (`pedroc verify`: source-hash banner +
+    # stale/drift detection — README compiler-contract rule 8).
+    from tests.test_verify import _run as run_verify_tests
+    print()
+    if not run_verify_tests():
+        all_ok = False
+
     # ...and the LLM-authoring benchmark's self-test: every task's reference
     # solution must satisfy its hidden oracle (proves each oracle is satisfiable
     # and the scorer wiring is sound — see tools/eval/).

@@ -14,6 +14,7 @@ the parsed AST — deterministic and never wrong, at the cost of a few parens.
 """
 from . import nodes as N
 from .capabilities import declared_capabilities
+from .hashing import banner as _banner
 
 TYPE_MAP = {"text": "string", "whole": "number", "number": "number", "flag": "boolean", "nothing": "void"}
 CONVERT_MAP = {"text": "String", "whole": "__whole", "number": "Number"}
@@ -150,7 +151,7 @@ def _fresh_repeat():
     return f"__r{_repeat_counter[0]}"
 
 
-def generate(program, filename="<pedro>"):
+def generate(program, filename="<pedro>", source_hash=None):
     global _records, _typenames
     # Capabilities/adapters are Python-only for now (no JS reference adapter +
     # injection yet) — see WORKLOG. Fail loudly so the differential/corpus lanes
@@ -166,7 +167,7 @@ def generate(program, filename="<pedro>"):
     _typenames = {r.name for r in records} | {en.name for en in enums}
 
     lines = [
-        f"// Generated from {filename} by pedroc v0.1 (target: {program.target}). Do not edit by hand.",
+        _banner("//", filename, program.target, source_hash),
         "",
         _PREAMBLE,
         "",
