@@ -5,6 +5,67 @@ resume cleanly across sessions.
 
 ---
 
+## 2026-08-02 — Normative spec LANDED (`docs/SPEC.md` + `docs/grammar.md`), reconciled with the compiler
+
+Turned the long-planned `docs/SPEC.md` 🧭 into a real, normative specification and
+added a formal EBNF grammar `docs/grammar.md`, both derived DIRECTLY from the
+compiler source (`lexer.py`, `parser.py`, `nodes.py`, `annotate.py`,
+`capabilities.py`, both codegens, `hashing.py`) and cross-checked against the green
+corpus. Documentation-only job — **no compiler behavior changed**.
+
+**What landed.**
+- **`docs/SPEC.md`** (new) — the normative language definition: design invariants,
+  lexical structure, program shape, types, records/enums (incl. context-typed record
+  literals), statements, the full expression/precedence surface, capabilities +
+  verbs, the `expect` block + checking semantics (properties, sandbox, `--targets`),
+  determinism + the tamper-evident banner, the diagnostics code list, and a
+  "not-yet-implemented" section. Its spine is a **canonical per-construct translation
+  table** — every construct shown as Pedro → Python → TypeScript, transcribed from
+  the two codegens (e.g. `div` → `//` / `Math.floor`, `followed by` → `+` /
+  `__concat`, `==` → `==` / `__eq`, comprehensions → list-comp / `.filter/.map/
+  .reduce/.find`, capability verbs → adapter calls). States plainly that the compiler
+  (as run by the green corpus) is the source of truth on any doc disagreement.
+- **`docs/grammar.md`** (new) — EBNF for the lexer (tokens, layout, comments,
+  string rules) and the parser (program/declarations/types/statements/expressions
+  with exact precedence, keyword-led operations, string interpolation), plus the
+  reserved-word list. Mirrors the recursive-descent structure of `parser.py`.
+
+**Drift found and fixed (docs side, per the job's rule — corpus is truth).** Two
+genuine README/language-card claims contradicted the compiler; both are unused by
+the corpus, so the fix was to the docs, not the compiler:
+1. **`<T>?` optional shorthand does not exist.** The lexer has no `?` token
+   (`SINGLE_OPS` omits it) and `_parse_type` has no `?` branch — `whole?` is an
+   `unexpected-character` error. README line 275 even marked it "**implemented**".
+   Removed the false shorthand from README + `docs/language-card.md`; `optional T`
+   is the only form (confirmed by compiling).
+2. **No bare `nothing` value literal.** `nothing` is a *type* keyword and part of
+   the `is nothing`/`is present` predicates; `return nothing` / `let x = nothing`
+   is an `undefined-name` error (the parser never special-cases the word — only the
+   predicates synthesize an internal `Name("None")`). The language-card listed
+   `nothing` among value literals. Corrected the card + noted the real story in
+   SPEC §7.6 (an absent value comes from `find one … where`, tested with
+   `is nothing`).
+
+**Reconciliation + wiring.** README's authoring-contract "spec is normative" rule,
+repo-layout tree, and Done/Next roadmap now point at the real SPEC + grammar (the
+🧭/"planned" markers are gone; SPEC moved from Next → Done). `docs/language-card.md`
+gained a header note that it is a teaching *subset* and SPEC/grammar are normative.
+
+**Verified.** `python3 tools/check_docs.py` clean; `python3 tools/regress.py` green
+end-to-end (exit 0 — 78 corpus expectations, 11/11 TS lane, 45 diagnostic + 6
+sandbox + 5 packaging + 7 verify tests, 10/10 eval self-test, fuzz clean, doc-drift
+clean). Both drift fixes reproduced by hand-compiling. Spot-checked that the banner
+hash is identical across targets for one source (matching SPEC §10.2) and that
+`set x[i] to` (SPEC §6) is exercised by `dp_graph.pedro`.
+
+**Next:** nothing blocking. As the compiler grows (the remaining capability verbs,
+the TS adapter path), keep SPEC's translation tables + the not-yet-implemented
+section (§12) in step — they're now part of the docs-touching checklist alongside
+README/language-card. A future nicety: have `tools/check_docs.py` also scan
+`docs/SPEC.md`/`grammar.md` for construct-surface drift.
+
+---
+
 ## 2026-08-02 — Tamper-evident generated output (source-hash banner + `pedroc verify`)
 
 The 🧭 `verify-drift-detection` bet is now a real, documented feature. Every file

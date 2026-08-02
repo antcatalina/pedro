@@ -272,7 +272,7 @@ Composite types map too: `list of T` → `T[]`, `map of K to V` → `Record<K, V
 
 - `list of <T>` → `list[T]` — **implemented**
 - `map of <K> to <V>` → `dict[K, V]` — **implemented**
-- `optional <T>` (sugar: `<T>?`) → `T | None` — **implemented**
+- `optional <T>` → `T | None` — **implemented** (spell it in full — there is no `<T>?` shorthand)
 - `record` and `enum` (see below) — **implemented** (record → `@dataclass` / `interface`; enum → `str, Enum` / const object)
 
 ### Variables — implemented
@@ -587,9 +587,9 @@ A small standard library of readable predicates:
 
 This is the part that makes Pedro reliable. When a `.pedro` file is compiled, the toolchain **must** honor these rules:
 
-1. **The spec is normative.** `docs/SPEC.md` 🧭 (planned) and [`docs/language-card.md`](docs/language-card.md) define the language. Compile to match it — don't guess.
+1. **The spec is normative.** [`docs/SPEC.md`](docs/SPEC.md) (the reconciled normative spec, with the per-construct translation tables) and its formal grammar [`docs/grammar.md`](docs/grammar.md) — together with the compact [`docs/language-card.md`](docs/language-card.md) — define the language. Compile to match them — don't guess.
 2. **Emit idiomatic target code.** Follow the target language's conventions: naming (`snake_case` for Python, `camelCase` for TS, etc.), standard library, and formatting. Convert Pedro identifiers to the target convention while preserving meaning.
-3. **Translate construct-by-construct** using the canonical mappings in the spec. Don't restructure or "improve" the logic.
+3. **Translate construct-by-construct** using the canonical Pedro→Python / Pedro→TypeScript mappings in [`docs/SPEC.md`](docs/SPEC.md). Don't restructure or "improve" the logic.
 4. **No undeclared powers.** — **implemented.** Only capabilities the program declares with `use capability` may be used. A verb whose capability isn't declared is a **compile error** (`undeclared-capability`) — `pedroc` never invents APIs or imports libraries silently.
 5. **Resolve ambiguity conservatively.** If a line has one obviously-simplest correct reading, take it and add a `# pedro-note: …` comment. If it's genuinely unclear, emit `# PEDRO-AMBIGUITY: …` and ask the author rather than guessing.
 6. **Satisfy every `expect` block.** Generated code must pass all stated expectations; today they're emitted as runnable assertions with a pass/fail summary line.
@@ -684,7 +684,8 @@ pedro/
 │   ├── design-for-llms.md  # why Pedro is shaped this way (the strategy)
 │   ├── language-card.md    # compact in-context spec for the authoring LLM
 │   ├── cookbook.md         # 22 algorithms, all compiled + checked by pedroc
-│   └── SPEC.md              # normative spec                            (planned)
+│   ├── SPEC.md             # normative spec + per-construct translation tables
+│   └── grammar.md          # formal EBNF grammar (derived from the compiler)
 ├── examples/
 │   ├── math.pedro          # integer algorithms
 │   ├── cookbook/            # the cookbook algorithms as .pedro (regression corpus; incl. tickets.pedro — record + enum)
@@ -748,8 +749,8 @@ Repo-specific conventions and guardrails for anyone — or any Claude agent — 
 
 Live status and next steps live in [WORKLOG.md](WORKLOG.md). In brief:
 
-- **Done** — the language design; a real deterministic compiler (`pedroc`) for the scalar/list/map/`record`/`enum`/control-flow subset → **Python and TypeScript**; **capabilities + the swappable adapter layer** (Python; database/email/crypto verbs, undeclared-use is a compile error, the declared surface reported by `check --json`); the **capability → agent-permission bridge** (`pedroc permissions`, see above); the `pedroc check` loop, typed holes, and structured diagnostics, sandboxed in a subprocess; the [cookbook](docs/cookbook.md) as a passing regression suite (`tools/regress.py`) on both backends; a differential tester + seedable grammar fuzzer running live over both backends (`tools/differential.py`, `tools/fuzz.py`); the cross-target agreement check promoted into a first-class `pedroc check --targets` guarantee; **property-based `expect` blocks** (`for all n from a to b: <flag>`, enumerated over the bounded range with the first counterexample reported, on both backends); **tamper-evident generated output** (a source content-hash stamped in every banner + `pedroc verify` to detect stale/hand-edited output); and a mechanical doc-drift backstop (`tools/check_docs.py`) wired into CI.
-- **Next (highest priority first)** — the remaining capability verbs (db `update`/`delete`, `http`/`files`/`time`/`random`) + the TypeScript adapter path; then `docs/SPEC.md`.
+- **Done** — the language design; a real deterministic compiler (`pedroc`) for the scalar/list/map/`record`/`enum`/control-flow subset → **Python and TypeScript**; **capabilities + the swappable adapter layer** (Python; database/email/crypto verbs, undeclared-use is a compile error, the declared surface reported by `check --json`); the **capability → agent-permission bridge** (`pedroc permissions`, see above); the `pedroc check` loop, typed holes, and structured diagnostics, sandboxed in a subprocess; the [cookbook](docs/cookbook.md) as a passing regression suite (`tools/regress.py`) on both backends; a differential tester + seedable grammar fuzzer running live over both backends (`tools/differential.py`, `tools/fuzz.py`); the cross-target agreement check promoted into a first-class `pedroc check --targets` guarantee; **property-based `expect` blocks** (`for all n from a to b: <flag>`, enumerated over the bounded range with the first counterexample reported, on both backends); **tamper-evident generated output** (a source content-hash stamped in every banner + `pedroc verify` to detect stale/hand-edited output); a mechanical doc-drift backstop (`tools/check_docs.py`) wired into CI; and the **normative spec** ([`docs/SPEC.md`](docs/SPEC.md) with per-construct Pedro→Python/TypeScript translation tables + [`docs/grammar.md`](docs/grammar.md), the formal EBNF).
+- **Next (highest priority first)** — the remaining capability verbs (db `update`/`delete`, `http`/`files`/`time`/`random`) + the TypeScript adapter path.
 
 ### Committed: bets that make Pedro distinctly agent-native 🧭
 

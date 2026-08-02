@@ -2,7 +2,11 @@
 
 The compact, in-context spec for an **LLM authoring Pedro**. This is the artifact
 you inject into the prompt. Keep it small on purpose — the whole language must
-fit in context, because the model is taught here, not fine-tuned.
+fit in context, because the model is taught here, not fine-tuned. This card is a
+teaching *subset*; the full normative definition (with the per-construct
+Pedro→Python/TypeScript translation tables) is [`SPEC.md`](SPEC.md), and the
+formal grammar is [`grammar.md`](grammar.md). Where they and this card ever
+disagree, the compiler — as run by the green corpus — is the source of truth.
 
 ## Your job (as the authoring model)
 
@@ -87,7 +91,7 @@ expect:
 ## Types (supported)
 
 `text` · `whole` (integer) · `number` (decimal) · `flag` (true/false) · `nothing`
-`list of <T>` · `map of <K> to <V>` · `optional <T>` (or `<T>?`) · a `record` or
+`list of <T>` · `map of <K> to <V>` · `optional <T>` · a `record` or
 `enum` name (see below)
 
 ## Statements
@@ -122,7 +126,9 @@ expect:
   (each `{…}` hole is a full Pedro expression — `"avg {total div count}"` works;
   write `\{` / `\}` for a literal brace), `[1, 2, 3]` (list),
   `{ "k": value }` (map — string/expr keys),
-  `{ field: value }` (record — bare field-name keys; see below), `nothing`
+  `{ field: value }` (record — bare field-name keys; see below)
+  (there is no bare `nothing` literal — `nothing` is a type and the `is nothing`
+  predicate; an absent value comes from operations like `find one … where`)
 - collection ops: `count of x` · `item at i in x` · `first of x` · `last of x` ·
   `copy of x` · `characters of x` · `take n from x` · `drop n from x` ·
   `split x by sep` · `sort x` (ascending only — no `by <key>`/`descending` yet) ·

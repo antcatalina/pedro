@@ -1,10 +1,9 @@
 # In-flight task
 
-_None._ The 2026-08-02 tamper-evident-output work landed and is green: every
-generated file's `Do not edit by hand` banner now embeds a 12-hex hash of the
-`.pedro` **source** (`source-hash: …`), and `pedroc verify <file>.pedro <output>
-[--json]` recomputes it and reports match / stale (source changed) / drift (output
-hand-edited). New `pedroc/hashing.py` + `pedroc/verify.py`; `tests/test_verify.py`
-(7 tests, wired into `tools/regress.py`) proves all three states end-to-end on both
-backends. Determinism unchanged (the hash is of the source). See that WORKLOG entry.
-No task in flight.
+_None._ The 2026-08-02 normative-spec work landed and is green: `docs/SPEC.md`
+(normative spec + canonical per-construct Pedro→Python→TypeScript translation
+tables) and `docs/grammar.md` (formal EBNF) now exist, derived from the compiler
+and reconciled with README/language-card. Two genuine doc drifts were fixed on the
+doc side (the corpus is truth): the non-existent `<T>?` optional shorthand and the
+non-existent bare `nothing` value literal. `python3 tools/check_docs.py` clean and
+`python3 tools/regress.py` green (exit 0). See that WORKLOG entry. No task in flight.
