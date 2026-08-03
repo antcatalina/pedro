@@ -136,6 +136,21 @@ def annotate(program):
                 row = tables.get(table.value)
                 visit(record, ("name", row) if row else None)
             else:
+                if e.verb == "update" and e.args and isinstance(e.args[0], N.Name):
+                    # `update <row> in <table> set <field> to <value>` — the field
+                    # label must be a real field of the table's row record.
+                    rname = tables.get(e.args[0].value)
+                    rec = records.get(rname) if rname else None
+                    if rec is not None:
+                        declared = {f[0] for f in rec.fields}
+                        if e.field not in declared:
+                            errors.append(PedroTypeError(
+                                e.line, e.col,
+                                f"record {rname!r} has no field {e.field!r}",
+                                code="unknown-field",
+                                hint=f"{rname} fields are: {', '.join(sorted(declared))}",
+                                suggestion=nearest(e.field, sorted(declared)),
+                            ))
                 for a in e.args:
                     visit(a, None)
         elif isinstance(e, N.Builtin):

@@ -176,7 +176,9 @@ knowing *what remains*. So:
 
 **Supported by the compiler:** scalars (`text`/`whole`/`number`/`flag`), lists,
 maps, **`record`/`enum` types**, **capabilities + the adapter layer** (`use
-capability …`; `table`; verbs `insert`/`send`/`hash`/`verify`; undeclared use is a
+capability …`; `table`; database CRUD verbs `insert`/`update`/`delete` (`update <row>
+in <table> set <field> to <value>`, `delete <row> from <table>`) plus
+`send`/`hash`/`verify`; undeclared use is a
 compile error; `check --json` reports the declared `capabilities` surface),
 `let`/reassign, `increase`/`decrease`,
 `when`/`otherwise`, `while`, `repeat`,
@@ -209,8 +211,10 @@ embeds a 12-hex hash of the `.pedro` **source** (`source-hash: …`); `pedroc ve
 drift (output hand-edited) — `pedroc/hashing.py` + `pedroc/verify.py`.
 
 **Designed but NOT yet in the compiler** (see `WORKLOG.md` roadmap, highest first):
-the remaining capability verbs (db `update`/`delete`, `http`, `files`, `time`,
-`random`) and modules (`use "file.pedro"`). The `WORKLOG.md` roadmap section is the
+the remaining capability verbs (`http`, `files`, `time`,
+`random`) and modules (`use "file.pedro"`). (Database `update`/`delete` LANDED
+2026-08-03 — `database` now has the full `insert`/`find`/`update`/`delete` CRUD
+surface on both backends; see `examples/cookbook/inventory.pedro`.) The `WORKLOG.md` roadmap section is the
 source of truth for what to build next. (The TypeScript backend, `record`/`enum`
 types, the **capability/adapter layer on BOTH backends** (incl. the TS adapter path
 → `pedro_capabilities.ts`), and the first-class cross-target agreement

@@ -1,0 +1,72 @@
+# Inventory with a lifecycle status: the database capability's full CRUD surface —
+# `insert` / `find one` / `update` / `delete` — over a `record` row whose `status`
+# field is an `enum`. `update` writes one field of a found row; `delete` removes it.
+# The `expect` block proves the whole round-trip against the in-memory adapters.
+target: python
+
+use capability database
+
+enum Status:
+    in_stock
+    low
+    out
+
+record Item:
+    name: text
+    quantity: whole
+    status: Status
+    id: text = ""
+
+table items: Item
+
+task classify(quantity: whole) returns Status:
+    when quantity is 0:
+        return Status.out
+    when quantity is at most 3:
+        return Status.low
+    return Status.in_stock
+
+task stock(name: text, quantity: whole) returns text:
+    return insert into items { name: name, quantity: quantity, status: classify(quantity) }
+
+task on_hand(name: text) returns whole:
+    let it = find one it in items where it.name is name
+    when it is nothing:
+        return 0
+    return it.quantity
+
+task status_of(name: text) returns Status:
+    let it = find one it in items where it.name is name
+    return it.status
+
+task restock(name: text, amount: whole) returns whole:
+    let it = find one it in items where it.name is name
+    let new_qty = it.quantity + amount
+    update it in items set quantity to new_qty
+    update it in items set status to classify(new_qty)
+    return new_qty
+
+task sell(name: text, amount: whole) returns Status:
+    let it = find one it in items where it.name is name
+    let new_qty = it.quantity - amount
+    update it in items set quantity to new_qty
+    update it in items set status to classify(new_qty)
+    return classify(new_qty)
+
+task discard_out(name: text) returns whole:
+    let it = find one it in items where it.name is name and it.status is Status.out
+    when it is present:
+        delete it from items
+    return count of items
+
+expect:
+    given items is empty
+    stock("apple", 5) is present
+    on_hand("apple") == 5
+    status_of("apple") == Status.in_stock
+    restock("apple", 3) == 8
+    status_of("apple") == Status.in_stock
+    sell("apple", 8) == Status.out
+    status_of("apple") == Status.out
+    discard_out("apple") == 0
+    on_hand("apple") == 0

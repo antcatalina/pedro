@@ -468,7 +468,7 @@ All seven **declarations** parse, are enforced, and are reported by `pedroc chec
 | Capability | Verbs | Status |
 |------------|-------|--------|
 | `database` | `insert into <table> { … }` (returns id) | **implemented** |
-| `database` | `update <table> set { … } where …`, `delete from <table> where …` | 🧭 pending |
+| `database` | `update <row> in <table> set <field> to <value>`, `delete <row> from <table>` | **implemented** |
 | `email`    | `send email to <address> with subject "<s>" body "<b>"` | **implemented** |
 | `crypto`   | `hash <text>`, `verify <text> against <hash>` | **implemented** |
 | `http`     | `http get "<url>"`, `http post "<url>" with <body>` | 🧭 pending |
@@ -476,7 +476,7 @@ All seven **declarations** parse, are enforced, and are reported by `pedroc chec
 | `time`     | `now`, `today` | 🧭 pending |
 | `random`   | `random whole from <a> to <b>` | 🧭 pending |
 
-Reading a table (`find one user in users where …`, `count of users`, `for each user in users`) needs no new verb — a `table` handle is an ordinary iterable, so the existing collection operations work on it directly.
+Reading a table (`find one user in users where …`, `count of users`, `for each user in users`) needs no new verb — a `table` handle is an ordinary iterable, so the existing collection operations work on it directly. `update` and `delete` both act on a *row you already hold* (typically the result of a `find one`): `update it in items set quantity to it.quantity + 5` writes one field; `delete it from items` removes it. `examples/cookbook/inventory.pedro` exercises the full `insert`/`find one`/`update`/`delete` surface over a `record` whose status field is an `enum`.
 
 **The adapter layer.** Capability calls compile through a small, swappable module — `pedro_capabilities` — with one adapter object per capability (`database`, `crypto`, `email`, …). Generated code stays clean (`crypto.hash(password)`, `users.insert(...)`, `mailer.send(...)`) and the outside world is trivial to mock: a project ships its own `pedro_capabilities.py` (or, for the TypeScript backend, `pedro_capabilities.ts`) wired to a real database / SMTP server, and `pedroc`'s in-memory reference adapters ([`pedroc/adapters.py`](pedroc/adapters.py) / [`pedro_capabilities.ts`](pedro_capabilities.ts)) make `pedroc check` run an effectful program with no real I/O. `examples/signup.pedro` (validate → dedupe → hash → store → email) and `examples/cookbook/credentials.pedro` (register → login) both compile and pass `pedroc check` on **both** backends against those mocks.
 
@@ -751,7 +751,7 @@ Repo-specific conventions and guardrails for anyone — or any Claude agent — 
 Live status and next steps live in [WORKLOG.md](WORKLOG.md). In brief:
 
 - **Done** — the language design; a real deterministic compiler (`pedroc`) for the scalar/list/map/`record`/`enum`/control-flow subset → **Python and TypeScript**; **capabilities + the swappable adapter layer** on **both backends** (database/email/crypto verbs, undeclared-use is a compile error, the declared surface reported by `check --json`, cross-checked by `check --targets`); the **capability → agent-permission bridge** (`pedroc permissions`, see above); the `pedroc check` loop, typed holes, and structured diagnostics, sandboxed in a subprocess; the [cookbook](docs/cookbook.md) as a passing regression suite (`tools/regress.py`) on both backends; a differential tester + seedable grammar fuzzer running live over both backends (`tools/differential.py`, `tools/fuzz.py`); the cross-target agreement check promoted into a first-class `pedroc check --targets` guarantee; **property-based `expect` blocks** (`for all n from a to b: <flag>`, enumerated over the bounded range with the first counterexample reported, on both backends); **tamper-evident generated output** (a source content-hash stamped in every banner + `pedroc verify` to detect stale/hand-edited output); a mechanical doc-drift backstop (`tools/check_docs.py`) wired into CI; and the **normative spec** ([`docs/SPEC.md`](docs/SPEC.md) with per-construct Pedro→Python/TypeScript translation tables + [`docs/grammar.md`](docs/grammar.md), the formal EBNF).
-- **Next (highest priority first)** — the remaining capability verbs (db `update`/`delete`, `http`/`files`/`time`/`random`) + modules (`use "file.pedro"`).
+- **Next (highest priority first)** — the remaining capability verbs (`http`/`files`/`time`/`random`) + modules (`use "file.pedro"`). (db `update`/`delete` **landed** — the database capability now has the full `insert`/`find`/`update`/`delete` CRUD surface on both backends.)
 
 ### Committed: bets that make Pedro distinctly agent-native 🧭
 

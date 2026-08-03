@@ -382,6 +382,12 @@ def _gen_capcall(e):
     if e.verb == "insert":
         table, record = e.args
         return f"{_gen_expr(table)}.insert({_gen_expr(record)})"
+    if e.verb == "delete":
+        table, row = e.args
+        return f"{_gen_expr(table)}.delete({_gen_expr(row)})"
+    if e.verb == "update":
+        table, row, value = e.args
+        return f'{_gen_expr(table)}.update({_gen_expr(row)}, "{e.field}", {_gen_expr(value)})'
     if e.verb == "hash":
         return f"{_adapters['crypto']}.hash({_gen_expr(e.args[0])})"
     if e.verb == "verify":

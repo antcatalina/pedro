@@ -20,6 +20,8 @@ import { createHash } from "node:crypto";
 type Row = Record<string, any>;
 interface Table extends Array<Row> {
   insert(row: Row): string;
+  delete(row: Row): boolean;
+  update(row: Row, field: string, value: any): Row;
   clear(): void;
 }
 
@@ -32,6 +34,19 @@ function makeTable(name: string): Table {
     if (row && typeof row === "object" && "id" in row) row.id = id;
     rows.push(row);
     return id;
+  };
+  // Remove a specific row (by identity — the object a `find one` returned).
+  rows.delete = (row: Row): boolean => {
+    const idx = rows.indexOf(row);
+    if (idx < 0) return false;
+    rows.splice(idx, 1);
+    return true;
+  };
+  // Set `field` on a stored row; the in-memory row IS the stored object, so the
+  // write is visible to later reads. A real adapter would persist it.
+  rows.update = (row: Row, field: string, value: any): Row => {
+    row[field] = value;
+    return row;
   };
   rows.clear = (): void => {
     rows.length = 0;

@@ -349,6 +349,8 @@ same adapter calls against the reference `pedro_capabilities.ts`):
 |---|---|---|---|
 | `table t: Row` | database | `t = database.table("t", Row)` | `const t = database.table("t")` |
 | `insert into t { … }` | database | `t.insert({ … })` → returns new id | `t.insert({ … })` |
+| `update r in t set f to v` | database | `t.update(r, "f", v)` | `t.update(r, "f", v)` |
+| `delete r from t` | database | `t.delete(r)` | `t.delete(r)` |
 | `hash x` | crypto | `crypto.hash(x)` | `crypto.hash(x)` |
 | `verify x against h` | crypto | `crypto.verify(x, h)` → `flag` | `crypto.verify(x, h)` |
 | `send email to a with subject s body b` | email | `mailer.send(to=a, subject=s, body=b)` | `mailer.send(a, s, b)` |
@@ -465,10 +467,10 @@ Declared-but-not-yet-emitted or purely designed surface (see
 on these; write the signature plus an `expect:` block and leave a
 `todo "<what's needed>"` in the body instead of faking it.
 
-- **Capability verbs:** database `update`/`delete`; `http get`/`http post`;
-  files `read file`/`write … to file`; time `now`/`today`; random
-  `random whole from … to …`. (The implemented verbs — `insert`, `send`, `hash`,
-  `verify` — emit on **both** backends.)
+- **Capability verbs:** `http get`/`http post`; files `read file`/`write … to
+  file`; time `now`/`today`; random `random whole from … to …`. (The implemented
+  verbs — database `insert`/`update`/`delete`, email `send`, crypto `hash`/`verify`
+  — emit on **both** backends.)
 - **Language surface:** modules (`use "file.pedro"`), the `raw <lang>: … end raw`
   escape hatch, loop `stop`/`skip`, keyed/descending `sort`
   (`sort xs by key descending`), the `<T>?` optional shorthand, and the predicates

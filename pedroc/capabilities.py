@@ -39,6 +39,8 @@ _ADAPTER_FALLBACK = {
 # the rest of the README's verb table is pending (see WORKLOG).
 VERB_OWNER = {
     "insert": "database",
+    "delete": "database",
+    "update": "database",
     "send": "email",
     "hash": "crypto",
     "verify": "crypto",
@@ -47,6 +49,8 @@ VERB_OWNER = {
 # A human label per verb for diagnostics ("the verb `send email` needs …").
 VERB_LABEL = {
     "insert": "insert into",
+    "delete": "delete from",
+    "update": "update in",
     "send": "send email",
     "hash": "hash",
     "verify": "verify",

@@ -18,6 +18,7 @@ from . import nodes as N
 STATEMENT_KEYWORDS = (
     "let", "set", "return", "increase", "decrease", "for", "add", "swap",
     "send", "fail", "todo", "when", "match", "try", "while", "repeat",
+    "delete", "update",
 )
 
 
@@ -365,6 +366,29 @@ class Parser:
                 self._expect("NEWLINE")
                 return N.ExprStmt(expr=N.CapCall(
                     cap="email", verb="send", args=[to, subject, body], line=line, col=col))
+            if kw == "delete":
+                line, col = self._line(), self._col()
+                self._advance()
+                row = self._parse_add()            # the row to remove (e.g. a `find one`)
+                self._expect("NAME", "from")
+                table = self._parse_add()          # the table handle (a name)
+                self._expect("NEWLINE")
+                return N.ExprStmt(expr=N.CapCall(
+                    cap="database", verb="delete", args=[table, row], line=line, col=col))
+            if kw == "update":
+                line, col = self._line(), self._col()
+                self._advance()
+                row = self._parse_add()            # the row to modify
+                self._expect("NAME", "in")
+                table = self._parse_add()          # the table handle (a name)
+                self._expect("NAME", "set")
+                field = self._expect("NAME")[1]    # a bare record-field label
+                self._expect("NAME", "to")
+                value = self._parse_expr()
+                self._expect("NEWLINE")
+                return N.ExprStmt(expr=N.CapCall(
+                    cap="database", verb="update", args=[table, row, value],
+                    field=field, line=line, col=col))
             if kw == "fail":
                 self._advance()
                 self._expect("NAME", "with")

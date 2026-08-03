@@ -45,6 +45,20 @@ class _Table:
         self._rows.append(row)
         return new_id
 
+    def delete(self, row):
+        """Remove a specific row (by identity — the object a `find one` returned).
+        Returns whether a row was removed."""
+        before = len(self._rows)
+        self._rows = [r for r in self._rows if r is not row]
+        return len(self._rows) < before
+
+    def update(self, row, field, value):
+        """Set `field` on a stored row to `value` and return the row. A real
+        adapter would persist the change; the in-memory row IS the stored object,
+        so the write is visible to later reads."""
+        setattr(row, field, value)
+        return row
+
 
 class Database:
     def __init__(self):

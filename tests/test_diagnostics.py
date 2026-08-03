@@ -269,6 +269,43 @@ def test_capability_surface_is_reported_and_program_runs():
     assert report["ok"] is True
 
 
+_CRUD = (
+    'target: python\n\nuse capability database\n\n'
+    'record Item:\n    name: text\n    quantity: whole\n    id: text = ""\n\n'
+    'table items: Item\n\n'
+    'task setup() returns whole:\n'
+    '    let a = insert into items { name: "apple", quantity: 5 }\n'
+    '    return count of items\n\n'
+    'task restock(name: text, amount: whole) returns whole:\n'
+    '    let it = find one it in items where it.name is name\n'
+    '    update it in items set quantity to it.quantity + amount\n'
+    '    return it.quantity\n\n'
+    'task remove_item(name: text) returns whole:\n'
+    '    let it = find one it in items where it.name is name\n'
+    '    delete it from items\n'
+    '    return count of items\n\n'
+)
+
+
+def test_update_and_delete_run_against_the_adapter():
+    src = (_CRUD + 'expect:\n    given items is empty\n'
+           '    setup() == 1\n    restock("apple", 10) == 15\n'
+           '    remove_item("apple") == 0\n')
+    report = check(src, filename="<test>")
+    assert report["capabilities"] == ["database"]
+    assert report["ok"] is True
+
+
+def test_update_unknown_field_reports_code_and_suggestion():
+    # `quantitee` is not a field of Item — the update field label must resolve.
+    src = (_CRUD.replace("set quantity to", "set quantitee to")
+           + 'expect:\n    given items is empty\n    setup() == 1\n')
+    _, err = _first_error(src)
+    assert err["code"] == "unknown-field"
+    assert "'quantitee'" in err["message"]
+    assert err["suggestion"] == "quantity"
+
+
 def test_email_adapter_import_renamed_on_collision():
     # `email` is a parameter, so the email capability must import under an alias
     # (mailer) — the import is renamed, never the user's identifier.

@@ -258,8 +258,9 @@ class CapCall:
     statement is wrapped in `ExprStmt`); it compiles to a call on the capability's
     adapter. `args` order is verb-specific (see codegen)."""
     cap: str             # owning capability, e.g. "crypto"
-    verb: str            # e.g. "hash", "insert", "send", "verify"
+    verb: str            # e.g. "hash", "insert", "send", "verify", "update", "delete"
     args: list           # list of expressions
+    field: Optional[str] = None  # the target field name for `update` (a bare label)
     line: Optional[int] = None
     col: Optional[int] = None
 

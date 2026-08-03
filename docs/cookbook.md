@@ -5,7 +5,7 @@ A growing library of classic algorithms written in Pedro. It has two jobs:
 1. **Teach the language by example** — humans and Claude both learn Pedro faster from worked programs than from a grammar.
 2. **Anchor the compiler** — the more idiomatic patterns Claude has seen in-context, the more consistently it compiles.
 
-> **Every algorithm here is machine-verified.** Each one is compiled and run against its `expect` block as part of the corpus regression, `python tools/regress.py` (Python plus, for the non-capability programs, the TypeScript backend via the differential lane). At the time of writing all **34 algorithms pass ✓** on every available backend.
+> **Every algorithm here is machine-verified.** Each one is compiled and run against its `expect` block as part of the corpus regression, `python tools/regress.py` (Python plus the TypeScript backend via the differential lane — capability programs included). At the time of writing all **35 algorithms pass ✓** on every available backend.
 
 All examples target `python`, but the same source retargets — change the `target:` line and recompile.
 
@@ -21,7 +21,7 @@ All examples target `python`, but the same source retargets — change the `targ
 - [Recursion & dynamic programming](#recursion--dynamic-programming) — fibonacci_fast, min_coins, lcs_length, knapsack
 - [Graphs](#graphs) — shortest_hops (BFS), depth_first (DFS), topological_sort, dijkstra
 - [Codecs](#codecs) — rle_encode/decode, caesar cipher
-- [Data modeling](#data-modeling) — tickets (record + enum)
+- [Data modeling](#data-modeling) — tickets (record + enum), inventory (database CRUD)
 - [Property-based checks](#property-based-checks) — `for all n from a to b: …`
 
 ---
@@ -862,6 +862,64 @@ expect:
 
 See also `examples/order_total.pedro` — a `record LineItem` priced over a
 `list of LineItem`.
+
+### inventory — persistent CRUD over a `record` + `enum` (database capability) ✓
+
+The `database` capability gives a table the full CRUD surface. `insert into t { … }`
+stores a row; reads reuse the ordinary collection ops (`find one … in t`); **`update
+r in t set f to v`** writes one field of a row you already hold (typically a `find
+one` result); **`delete r from t`** removes it. Both `update` and `delete` act on the
+row VALUE, not a `where` clause — you look the row up first, then act on it. The
+row's `status` field is an `enum`, and `pedroc check` runs the whole round-trip
+against the in-memory reference adapters (no real I/O).
+
+```pedro
+use capability database
+
+enum Status:
+    in_stock
+    low
+    out
+
+record Item:
+    name: text
+    quantity: whole
+    status: Status
+    id: text = ""
+
+table items: Item
+
+task classify(quantity: whole) returns Status:
+    when quantity is 0:
+        return Status.out
+    when quantity is at most 3:
+        return Status.low
+    return Status.in_stock
+
+task restock(name: text, amount: whole) returns whole:
+    let it = find one it in items where it.name is name
+    let new_qty = it.quantity + amount
+    update it in items set quantity to new_qty
+    update it in items set status to classify(new_qty)
+    return new_qty
+
+task discard_out(name: text) returns whole:
+    let it = find one it in items where it.name is name and it.status is Status.out
+    when it is present:
+        delete it from items
+    return count of items
+
+expect:
+    given items is empty
+    insert into items { name: "apple", quantity: 5, status: classify(5) } is present
+    restock("apple", 3) == 8
+    discard_out("apple") == 1
+```
+
+The full example (`examples/cookbook/inventory.pedro`) also proves `sell` driving an
+item to `Status.out` and `discard_out` then deleting it. Because `update`/`delete`
+route through the declared capability, the effect stays part of the program's
+auditable surface — `pedroc check --json` reports `"capabilities":["database"]`.
 
 ---
 

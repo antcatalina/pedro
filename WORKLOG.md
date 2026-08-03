@@ -5,6 +5,69 @@ resume cleanly across sessions.
 
 ---
 
+## 2026-08-03 — Database `update`/`delete` verbs LANDED (full CRUD on BOTH backends)
+
+The `database` capability now has its whole CRUD surface: `insert` and `find one`
+already existed; this adds **`update`** and **`delete`**, emitting on Python AND
+TypeScript, routed through the reference adapters. The highest roadmap item is done.
+
+**Design (the simplest regular rule).** Both verbs act on a **row VALUE you already
+hold** — typically the result of a `find one` — not on a `where` clause. This reuses
+the existing query path (`find one` returns the live row object) and needs **zero new
+scoping machinery** (no new bound variable in `resolve`/`annotate`); the row and the
+new value are ordinary in-scope expressions.
+- `update <row> in <table> set <field> to <value>` — writes ONE field of the row.
+  `<field>` is a bare record-field label (like a record-literal key), validated
+  against the table's row record → `unknown-field` with a "did you mean" suggestion.
+- `delete <row> from <table>` — removes that row (by identity).
+
+**What landed.**
+- **Parser** (`parser.py`) — two new statement forms after `send`; both wrap a
+  `CapCall` in `ExprStmt`. Row/table parsed at `_parse_add` level so `in`/`from`
+  aren't swallowed. `delete`/`update` added to `STATEMENT_KEYWORDS`.
+- **Nodes** (`nodes.py`) — `CapCall` gained an optional `field` (the `update` target
+  label). All construction sites are keyword-arg, so the new field slots in cleanly.
+- **Codegen** — Python `t.update(row, "f", v)` / `t.delete(row)`; TS identical shape.
+- **Adapters** — `pedroc/adapters.py` `_Table.update`/`.delete`; `pedro_capabilities.ts`
+  `makeTable` gains `update`/`delete` (delete by `indexOf`+`splice`; the in-memory row
+  IS the stored object, so `update`'s `setattr`/`row[field]=v` is visible to later
+  reads — a real adapter would persist).
+- **Capabilities** (`capabilities.py`) — `VERB_OWNER`/`VERB_LABEL` register
+  `update`/`delete` → `database` (so undeclared use is still a compile error).
+- **Annotate** (`annotate.py`) — the `update` field label is checked against the
+  table's row record → `unknown-field` (`"record 'Item' has no field 'quantitee'"`,
+  suggests `quantity`).
+
+**Proof.** New corpus program **`examples/cookbook/inventory.pedro`** — a `record
+Item` whose `status` field is an `enum Status`, exercising `insert`/`find one`/
+`update`/`delete` end to end (stock → restock → sell to out-of-stock → discard). 9/9
+expectations green, python+typescript agree. Two new diagnostic tests
+(`test_update_and_delete_run_against_the_adapter`,
+`test_update_unknown_field_reports_code_and_suggestion`).
+
+**Verified.** `python3 tools/regress.py` GREEN — corpus **117 → 126 expectations**,
+TS lane **18 → 19/19**, diagnostics **45 → 47/47**, packaging/verify/sandbox/eval
+green, fuzz clean, `check_docs.py` clean (it had flagged the stale README line
+marking `delete from` unsupported — now fixed). `tools/differential.py` PASS.
+`pedroc check examples/cookbook/inventory.pedro --targets python,typescript` → all
+targets agree.
+
+**Docs.** README (verb table row now **implemented**, the reading/CRUD paragraph, the
+Next-roadmap line, coverage), `docs/language-card.md` (verbs-live list + reserved
+words + not-yet-supported trim), `docs/SPEC.md` (translation-table rows + §12 trim),
+`docs/grammar.md` (`delete_stmt`/`update_stmt` productions + reserved words),
+`docs/cookbook.md` (new inventory subsection, count 34 → 35, TS-lane caveat fixed),
+and CLAUDE.md coverage note.
+
+**Next:** the remaining capability verbs — `http`/`files`/`time`/`random` — and
+modules (`use "file.pedro"`). Two ergonomic gaps still open: no `set m[i][j]`/`set
+list[i]`; no char-code conversion. NOTE for those verbs: `time`/`random` break the
+determinism/byte-identical guarantee unless the adapter is seeded/frozen — design the
+reference adapter to be deterministic (fixed clock, seeded RNG) so `check` stays
+reproducible.
+
+---
+
 ## 2026-08-03 — TypeScript adapter path LANDED (capability programs now run on BOTH backends)
 
 Closed the last "Python-only" gap. The TypeScript backend used to raise

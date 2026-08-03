@@ -132,6 +132,7 @@ statement   = let | set | reassign | augassign | return
             | for_each | while_stmt | repeat_stmt
             | when_chain | match_stmt | try_stmt
             | add_stmt | swap_stmt | send_stmt
+            | delete_stmt | update_stmt
             | fail_stmt | todo_stmt | expr_stmt ;
 
 let         = "let" , NAME , "=" , expr , NEWLINE ;
@@ -163,6 +164,10 @@ swap_stmt   = "swap" , "items" , "at" , add , "and" , add , "in" , add , NEWLINE
 send_stmt   = "send" , "email" , "to" , expr ,
               "with" , "subject" , expr , "body" , expr , NEWLINE ;
               (* capability: email *)
+delete_stmt = "delete" , add , "from" , add , NEWLINE ;   (* capability: database *)
+              (* removes the row VALUE (e.g. a `find one`) from the table *)
+update_stmt = "update" , add , "in" , add , "set" , NAME , "to" , expr , NEWLINE ;
+              (* capability: database — writes one field of the row VALUE *)
 
 fail_stmt   = "fail" , "with" , expr , NEWLINE ;
 todo_stmt   = "todo" , STRING , NEWLINE ;
@@ -289,8 +294,8 @@ as ordinary identifiers where they would be ambiguous:
 `divisible`, `least`, `most`, `greater`, `less`, `than`, `followed`, `mod`,
 `div`, `true`, `false`, `list`, `map`, `optional`, `count`, `first`, `last`,
 `copy`, `characters`, `take`, `drop`, `item`, `split`, `sort`, `numbers`,
-`filter`, `collect`, `sum`, `find`, `one`, `insert`, `into`, `hash`, `verify`,
-`against`, `fails`.
+`filter`, `collect`, `sum`, `find`, `one`, `insert`, `into`, `update`, `delete`,
+`hash`, `verify`, `against`, `fails`.
 
-The four capability verbs `hash`, `insert`, `send`, and `verify` are reserved in
-their verb positions — don't name a variable after them.
+The capability verbs `hash`, `insert`, `update`, `delete`, `send`, and `verify` are
+reserved in their verb positions — don't name a variable after them.
