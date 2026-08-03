@@ -253,13 +253,15 @@ Declarable capabilities: `database` · `http` · `email` · `files` · `time` ·
   hold, e.g. from a `find one` (database). `delete <row> from <table>` — remove that
   row (database). Both act on the row VALUE, not a `where` clause.
 - `send email to <addr> with subject <s> body <b>` — send an email (email).
+- `write <text> to file <path>` — store content under a path (files). `read file <path>`
+  — read it back. In `check`, an in-memory filesystem (no real I/O).
 - `hash <text>` — hash a value (crypto). `verify <text> against <hash>` — returns a `flag`.
 - `given <table> is empty` — in an `expect:` block, reset a table to empty first.
 
 Capability calls compile through a swappable `pedro_capabilities` adapter module,
 so `check` runs them against in-memory mocks (no real I/O). Verbs are reserved
 words in these positions — don't name a variable `hash`, `insert`, `send`, `verify`,
-`update`, or `delete`.
+`update`, `delete`, `write`, or `read` (before `file`).
 
 The declared surface also drives `python -m pedroc permissions <file>.pedro
 [--format claude-settings|json]`, which derives an agent-harness permission manifest
@@ -270,10 +272,9 @@ not change what you author.
 ## NOT yet supported — do not use until the compiler catches up
 
 These capability verbs are declared-but-not-yet-emitted:
-`http get`/`http post`, files `read file`/`write … to file`, `now`/`today` (time),
-`random whole from … to …` (random). (The implemented database/email/crypto verbs —
-`insert`, `update`, `delete`, `send`, `hash`, `verify` — emit on **both** backends.)
-Also: modules
+`http get`/`http post`, `now`/`today` (time), `random whole from … to …` (random).
+(The implemented database/email/files/crypto verbs are listed under "Verbs live
+today" above — they emit on **both** backends.) Also: modules
 (`use "file.pedro"`), the `raw <lang>: … end raw` escape hatch, loop `stop`/`skip`,
 keyed/descending `sort`, and the predicates `is a valid email` / `is a valid url` /
 `is even` / `is odd`. If the task needs one of these: write the task signature and

@@ -306,6 +306,41 @@ def test_update_unknown_field_reports_code_and_suggestion():
     assert err["suggestion"] == "quantity"
 
 
+def test_files_capability_round_trips_through_the_adapter():
+    # `write value to file path` then `read file path` — the files capability end
+    # to end, against the in-memory reference filesystem.
+    src = ('target: python\n\nuse capability files\n\n'
+           'task save(path: text, value: text) returns text:\n'
+           '    write value to file path\n    return value\n\n'
+           'task load(path: text) returns text:\n'
+           '    return read file path\n\n'
+           'expect:\n    save("k", "v") == "v"\n    load("k") == "v"\n')
+    report = check(src, filename="<test>")
+    assert report["capabilities"] == ["files"]
+    assert report["ok"] is True
+
+
+def test_read_file_without_capability_is_a_compile_error():
+    src = ('target: python\n\ntask peek(path: text) returns text:\n'
+           '    return read file path\n')
+    _, err = _first_error(src)
+    assert err["code"] == "undeclared-capability"
+    assert "files" in err["message"]
+
+
+def test_files_adapter_import_renamed_on_collision():
+    # `files` is a parameter, so the files capability imports under an alias
+    # (filesystem) — the import is renamed, never the user's identifier.
+    src = ('target: python\n\nuse capability files\n\n'
+           'task keep(files: text, value: text) returns text:\n'
+           '    write value to file files\n    return read file files\n\n'
+           'expect:\n    keep("k", "v") == "v"\n')
+    out = compile_source(src, filename="<test>")
+    assert "from pedro_capabilities import files as filesystem" in out
+    assert "filesystem.write(files" in out
+    assert "filesystem.read(files)" in out
+
+
 def test_email_adapter_import_renamed_on_collision():
     # `email` is a parameter, so the email capability must import under an alias
     # (mailer) — the import is renamed, never the user's identifier.

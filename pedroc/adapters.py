@@ -87,7 +87,27 @@ class Mailer:
         return True
 
 
+class Files:
+    """An in-memory filesystem: `write` stores content under a path, `read`
+    returns it. Deterministic (no real I/O), so `pedroc check` stays reproducible;
+    a real project's adapter would hit the actual filesystem behind the same names.
+    Reading a path that was never written raises — the caller wrote it first."""
+
+    def __init__(self):
+        self._files = {}
+
+    def write(self, path, content):
+        self._files[path] = content
+        return path
+
+    def read(self, path):
+        if path not in self._files:
+            raise FileNotFoundError(f"no such file: {path}")
+        return self._files[path]
+
+
 # Module-level adapter instances — the names the generated `import` binds to.
 database = Database()
 crypto = Crypto()
 email = Mailer()
+files = Files()

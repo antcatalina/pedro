@@ -131,7 +131,7 @@ block       = INDENT , statement , { statement } , DEDENT ;
 statement   = let | set | reassign | augassign | return
             | for_each | while_stmt | repeat_stmt
             | when_chain | match_stmt | try_stmt
-            | add_stmt | swap_stmt | send_stmt
+            | add_stmt | swap_stmt | send_stmt | write_stmt
             | delete_stmt | update_stmt
             | fail_stmt | todo_stmt | expr_stmt ;
 
@@ -168,6 +168,7 @@ delete_stmt = "delete" , add , "from" , add , NEWLINE ;   (* capability: databas
               (* removes the row VALUE (e.g. a `find one`) from the table *)
 update_stmt = "update" , add , "in" , add , "set" , NAME , "to" , expr , NEWLINE ;
               (* capability: database — writes one field of the row VALUE *)
+write_stmt  = "write" , add , "to" , "file" , expr , NEWLINE ;   (* capability: files *)
 
 fail_stmt   = "fail" , "with" , expr , NEWLINE ;
 todo_stmt   = "todo" , STRING , NEWLINE ;
@@ -267,6 +268,7 @@ operation =
     | "sum" , "of" , add , "for" , "each" , NAME , "in" , add , [ "where" , expr ]
     | "find" , "one" , NAME , "in" , add , "where" , expr
     | "insert" , "into" , add , expr                    (* capability: database *)
+    | "read" , "file" , add                             (* capability: files *)
     | "hash" , unary                                    (* capability: crypto *)
     | "verify" , add , "against" , add ;                (* capability: crypto *)
 ```
@@ -295,7 +297,8 @@ as ordinary identifiers where they would be ambiguous:
 `div`, `true`, `false`, `list`, `map`, `optional`, `count`, `first`, `last`,
 `copy`, `characters`, `take`, `drop`, `item`, `split`, `sort`, `numbers`,
 `filter`, `collect`, `sum`, `find`, `one`, `insert`, `into`, `update`, `delete`,
-`hash`, `verify`, `against`, `fails`.
+`write`, `read`, `file`, `hash`, `verify`, `against`, `fails`.
 
-The capability verbs `hash`, `insert`, `update`, `delete`, `send`, and `verify` are
-reserved in their verb positions — don't name a variable after them.
+The capability verbs `hash`, `insert`, `update`, `delete`, `send`, `write`, `read`
+(before `file`), and `verify` are reserved in their verb positions — don't name a
+variable after them.

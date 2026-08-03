@@ -5,6 +5,52 @@ resume cleanly across sessions.
 
 ---
 
+## 2026-08-03 — `files` capability LANDED (`read file` / `write … to file`, BOTH backends)
+
+The `files` capability now emits on Python AND TypeScript, routed through a swappable
+in-memory reference filesystem — the next roadmap verb after database CRUD. `files` is
+deterministic (no real I/O), so `pedroc check` stays reproducible.
+
+**Surface (matches the README design).**
+- `write <text> to file <path>` — a statement; stores content under a path.
+- `read file <path>` — an expression; returns the stored content (throws for a path
+  never written — the caller writes it first).
+
+**What landed.**
+- **Parser** (`parser.py`) — `write` added to `STATEMENT_KEYWORDS` + a statement handler
+  (`write <text> to file <path>` → `CapCall(cap="files", verb="write", args=[path, text])`);
+  `read file <path>` as an expression, gated on the `file` lookahead so a bare `read` is
+  still an ordinary name → `CapCall(verb="read", args=[path])`.
+- **Codegen** — Python `files.write(path, text)` / `files.read(path)`; TS identical shape.
+- **Adapters** — `pedroc/adapters.py` `Files` (dict-backed `write`/`read`) + `files`
+  instance; `pedro_capabilities.ts` `Files` class + `files` export (mirror).
+- **Capabilities** (`capabilities.py`) — `VERB_OWNER`/`VERB_LABEL` register `read`/`write`
+  → `files`, so undeclared use is still an `undeclared-capability` compile error. The
+  `files`-adapter collision fallback (`filesystem`) was already present.
+
+**Proof.** New corpus program **`examples/cookbook/journal.pedro`** — a tiny persisted
+key/value store (`save` writes, `load` reads, incl. an overwrite). 3/3 green, python +
+typescript agree. Three new diagnostic tests (round-trip runs; undeclared `read file`
+is a compile error; the `files`→`filesystem` import rename on identifier collision).
+
+**Verified.** `python3 tools/regress.py` GREEN — corpus **126 → 129 expectations**, TS
+lane **19 → 20/20**, diagnostics **47 → 50/50**, packaging/verify/sandbox/eval green,
+fuzz clean, `check_docs.py` clean (it had flagged the stale README/language-card lines
+marking `read file`/`write … to file` unsupported — now fixed). Differential PASS.
+
+**Docs.** README (verb table row → **implemented**, adapter-layer paragraph, status +
+Next lines), `docs/language-card.md` (verbs-live list + reserved words + not-yet trim),
+`docs/SPEC.md` (translation-table rows + §12 trim), `docs/grammar.md`
+(`write_stmt`/`read` productions + reserved words), `docs/cookbook.md` (new journal
+subsection, count 35 → 36, TOC), CLAUDE.md coverage note.
+
+**Next:** the remaining capability verbs — `http`/`time`/`random` — and modules
+(`use "file.pedro"`). GOTCHA for `time`/`random`: they break the determinism /
+byte-identical guarantee unless the reference adapter is seeded/frozen (fixed clock,
+seeded RNG) — design them deterministic so `check` stays reproducible.
+
+---
+
 ## 2026-08-03 — Database `update`/`delete` verbs LANDED (full CRUD on BOTH backends)
 
 The `database` capability now has its whole CRUD surface: `insert` and `find one`

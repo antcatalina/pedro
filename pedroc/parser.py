@@ -18,7 +18,7 @@ from . import nodes as N
 STATEMENT_KEYWORDS = (
     "let", "set", "return", "increase", "decrease", "for", "add", "swap",
     "send", "fail", "todo", "when", "match", "try", "while", "repeat",
-    "delete", "update",
+    "delete", "update", "write",
 )
 
 
@@ -389,6 +389,16 @@ class Parser:
                 return N.ExprStmt(expr=N.CapCall(
                     cap="database", verb="update", args=[table, row, value],
                     field=field, line=line, col=col))
+            if kw == "write":
+                line, col = self._line(), self._col()
+                self._advance()
+                text = self._parse_add()           # the content to write
+                self._expect("NAME", "to")
+                self._expect("NAME", "file")
+                path = self._parse_expr()          # the file path
+                self._expect("NEWLINE")
+                return N.ExprStmt(expr=N.CapCall(
+                    cap="files", verb="write", args=[path, text], line=line, col=col))
             if kw == "fail":
                 self._advance()
                 self._expect("NAME", "with")
@@ -924,6 +934,11 @@ class Parser:
             table = self._parse_add()          # the table handle (a name)
             record = self._parse_expr()        # the { ... } record literal to store
             return N.CapCall(cap="database", verb="insert", args=[table, record], line=line, col=col)
+        if kw == "read" and self._peek()[1] == "file":
+            line, col = self._line(), self._col()
+            self._advance()  # read
+            self._advance()  # file
+            return N.CapCall(cap="files", verb="read", args=[self._parse_add()], line=line, col=col)
         if kw == "hash":
             line, col = self._line(), self._col()
             self._advance()

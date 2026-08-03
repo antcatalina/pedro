@@ -5,7 +5,7 @@ A growing library of classic algorithms written in Pedro. It has two jobs:
 1. **Teach the language by example** — humans and Claude both learn Pedro faster from worked programs than from a grammar.
 2. **Anchor the compiler** — the more idiomatic patterns Claude has seen in-context, the more consistently it compiles.
 
-> **Every algorithm here is machine-verified.** Each one is compiled and run against its `expect` block as part of the corpus regression, `python tools/regress.py` (Python plus the TypeScript backend via the differential lane — capability programs included). At the time of writing all **35 algorithms pass ✓** on every available backend.
+> **Every algorithm here is machine-verified.** Each one is compiled and run against its `expect` block as part of the corpus regression, `python tools/regress.py` (Python plus the TypeScript backend via the differential lane — capability programs included). At the time of writing all **36 algorithms pass ✓** on every available backend.
 
 All examples target `python`, but the same source retargets — change the `target:` line and recompile.
 
@@ -21,7 +21,7 @@ All examples target `python`, but the same source retargets — change the `targ
 - [Recursion & dynamic programming](#recursion--dynamic-programming) — fibonacci_fast, min_coins, lcs_length, knapsack
 - [Graphs](#graphs) — shortest_hops (BFS), depth_first (DFS), topological_sort, dijkstra
 - [Codecs](#codecs) — rle_encode/decode, caesar cipher
-- [Data modeling](#data-modeling) — tickets (record + enum), inventory (database CRUD)
+- [Data modeling](#data-modeling) — tickets (record + enum), inventory (database CRUD), journal (files capability)
 - [Property-based checks](#property-based-checks) — `for all n from a to b: …`
 
 ---
@@ -920,6 +920,36 @@ The full example (`examples/cookbook/inventory.pedro`) also proves `sell` drivin
 item to `Status.out` and `discard_out` then deleting it. Because `update`/`delete`
 route through the declared capability, the effect stays part of the program's
 auditable surface — `pedroc check --json` reports `"capabilities":["database"]`.
+
+### journal — a persisted key/value store (files capability) ✓
+
+The `files` capability adds `write <text> to file <path>` and `read file <path>`.
+In `pedroc check` these run against an in-memory reference filesystem (no real I/O);
+a project's own adapter would hit the real disk behind the same names. A write is
+visible to a later read, so a save/load round-trip — including an overwrite — works
+end to end.
+
+```pedro
+target: python
+
+use capability files
+
+task save(path: text, value: text) returns text:
+    write value to file path
+    return value
+
+task load(path: text) returns text:
+    return read file path
+
+expect:
+    save("motd.txt", "be excellent") == "be excellent"
+    load("motd.txt") == "be excellent"
+    given overwrite = save("motd.txt", "party on")
+    load("motd.txt") == "party on"
+```
+
+`pedroc check --json` reports `"capabilities":["files"]` — the whole blast radius,
+visible before the program runs. (`examples/cookbook/journal.pedro`.)
 
 ---
 

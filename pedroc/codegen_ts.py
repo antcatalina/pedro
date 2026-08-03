@@ -396,6 +396,11 @@ def _gen_capcall(e):
         to, subject, body = e.args
         return (f"{_adapters['email']}.send({_gen_expr(to)}, "
                 f"{_gen_expr(subject)}, {_gen_expr(body)})")
+    if e.verb == "write":
+        path, text = e.args
+        return f"{_adapters['files']}.write({_gen_expr(path)}, {_gen_expr(text)})"
+    if e.verb == "read":
+        return f"{_adapters['files']}.read({_gen_expr(e.args[0])})"
     raise TypeError(f"unknown capability verb: {e.verb!r}")
 
 

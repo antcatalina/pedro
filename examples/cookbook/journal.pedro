@@ -1,0 +1,22 @@
+# A minimal persisted key/value store on top of the `files` capability:
+# `save` writes a value under a path and `load` reads it back. In `pedroc check`
+# these run against the in-memory reference filesystem (no real I/O); a project's
+# own adapter would hit the real disk behind the same names. Third effectful
+# example — this one exercises the `files` verbs (`write to file` / `read file`)
+# end to end, including an overwrite.
+target: python
+
+use capability files
+
+task save(path: text, value: text) returns text:
+    write value to file path
+    return value
+
+task load(path: text) returns text:
+    return read file path
+
+expect:
+    save("motd.txt", "be excellent") == "be excellent"
+    load("motd.txt") == "be excellent"
+    given overwrite = save("motd.txt", "party on")
+    load("motd.txt") == "party on"

@@ -42,6 +42,8 @@ VERB_OWNER = {
     "delete": "database",
     "update": "database",
     "send": "email",
+    "read": "files",
+    "write": "files",
     "hash": "crypto",
     "verify": "crypto",
 }
@@ -52,6 +54,8 @@ VERB_LABEL = {
     "delete": "delete from",
     "update": "update in",
     "send": "send email",
+    "read": "read file",
+    "write": "write to file",
     "hash": "hash",
     "verify": "verify",
 }

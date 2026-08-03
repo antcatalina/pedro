@@ -80,7 +80,23 @@ export class Mailer {
   }
 }
 
+// An in-memory filesystem — the mirror of Python's `Files`. `write` stores content
+// under a path, `read` returns it (throwing for a path never written). Deterministic
+// so `pedroc check` stays reproducible; a real adapter would hit the disk.
+export class Files {
+  private files: Record<string, any> = {};
+  write(path: string, content: any): string {
+    this.files[path] = content;
+    return path;
+  }
+  read(path: string): any {
+    if (!(path in this.files)) throw new Error(`no such file: ${path}`);
+    return this.files[path];
+  }
+}
+
 // Module-level adapter instances — the names the generated `import` binds to.
 export const database = new Database();
 export const crypto = new Crypto();
 export const email = new Mailer();
+export const files = new Files();
