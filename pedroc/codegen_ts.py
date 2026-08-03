@@ -13,7 +13,7 @@ Binary expressions are fully parenthesized so emitted precedence always matches
 the parsed AST — deterministic and never wrong, at the cost of a few parens.
 """
 from . import nodes as N
-from .capabilities import declared_capabilities
+from .capabilities import declared_capabilities, adapter_names
 from .hashing import banner as _banner
 
 TYPE_MAP = {"text": "string", "whole": "number", "number": "number", "flag": "boolean", "nothing": "void"}
@@ -80,6 +80,18 @@ function __last(c: any): any { return c[c.length - 1]; }
 function __whole(x: any): number { return Math.trunc(Number(x)); }'''
 
 
+def _cap_import(caps):
+    """`import { database, email as mailer, crypto } from "./pedro_capabilities.ts"`
+    — the TypeScript mirror of the Python `from pedro_capabilities import …`. One
+    swappable per-project module; aliases dodge collisions with user identifiers
+    (contract #7: rename the IMPORT, never the user's names)."""
+    specs = []
+    for cap in caps:
+        alias = _adapters[cap]
+        specs.append(cap if alias == cap else f"{cap} as {alias}")
+    return "import { " + ", ".join(specs) + ' } from "./pedro_capabilities.ts";'
+
+
 def _pad(indent):
     return "  " * indent
 
@@ -139,6 +151,7 @@ _repeat_counter = [0]
 # RecordLit codegen can fill in defaulted fields — mirrors the Python backend.
 _records = {}
 _typenames = set()   # declared record + enum names (rendered by name, not `any`)
+_adapters = {}       # {capability: emitted adapter alias} for this file
 
 
 def _fresh_subject():
@@ -152,31 +165,34 @@ def _fresh_repeat():
 
 
 def generate(program, filename="<pedro>", source_hash=None):
-    global _records, _typenames
-    # Capabilities/adapters are Python-only for now (no JS reference adapter +
-    # injection yet) — see WORKLOG. Fail loudly so the differential/corpus lanes
-    # SKIP capability programs rather than emitting broken TypeScript.
-    if declared_capabilities(program):
-        raise NotImplementedError(
-            "the TypeScript backend does not support capabilities yet (Python-only)")
+    global _records, _typenames, _adapters
     _subject_counter[0] = 0  # reset per call → deterministic temp names
     _repeat_counter[0] = 0
     records = [it for it in program.items if isinstance(it, N.Record)]
     enums = [it for it in program.items if isinstance(it, N.Enum)]
+    tables = [it for it in program.items if isinstance(it, N.Table)]
+    caps = declared_capabilities(program)
     _records = {r.name: r for r in records}
     _typenames = {r.name for r in records} | {en.name for en in enums}
+    _adapters = adapter_names(program)
 
     lines = [
         _banner("//", filename, program.target, source_hash),
         "",
-        _PREAMBLE,
-        "",
     ]
+    if caps:
+        lines += [_cap_import(caps), ""]
+    lines += [_PREAMBLE, ""]
     for en in enums:
         lines.extend(_gen_enum(en))
         lines.append("")
     for rec in records:
         lines.extend(_gen_record(rec))
+        lines.append("")
+    # Table bindings come after the record interfaces they reference.
+    for tbl in tables:
+        lines.append(f'const {tbl.name} = {_adapters["database"]}.table("{tbl.name}");')
+    if tables:
         lines.append("")
     if _uses_pedro_error(program):
         lines += ["class PedroError extends Error {}", ""]
@@ -207,6 +223,8 @@ def _gen_expect_item(item):
     kind = item[0]
     if kind == "given":
         return [f"  const {item[1]} = {_gen_expr(item[2])};"]
+    if kind == "given-empty":
+        return [f"  {item[1]}.clear();"]
     if kind == "forall":
         name, lo, hi, body = item[1], item[2], item[3], item[4]
         return [
@@ -357,6 +375,24 @@ def _gen_stmt(s, indent):
     raise TypeError(f"unknown statement node: {s!r}")
 
 
+def _gen_capcall(e):
+    """A capability verb -> a call on its adapter (from `pedro_capabilities.ts`).
+    The TypeScript mirror of the Python backend's `_gen_capcall`: table verbs
+    (`insert`) go through the table handle; the rest through the capability alias."""
+    if e.verb == "insert":
+        table, record = e.args
+        return f"{_gen_expr(table)}.insert({_gen_expr(record)})"
+    if e.verb == "hash":
+        return f"{_adapters['crypto']}.hash({_gen_expr(e.args[0])})"
+    if e.verb == "verify":
+        return f"{_adapters['crypto']}.verify({_gen_expr(e.args[0])}, {_gen_expr(e.args[1])})"
+    if e.verb == "send":
+        to, subject, body = e.args
+        return (f"{_adapters['email']}.send({_gen_expr(to)}, "
+                f"{_gen_expr(subject)}, {_gen_expr(body)})")
+    raise TypeError(f"unknown capability verb: {e.verb!r}")
+
+
 def _js_string(value):
     """A plain double-quoted JS string literal (no interpolation)."""
     out = value.replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n")
@@ -413,6 +449,8 @@ def _gen_expr(e):
         return "true" if e.value else "false"
     if isinstance(e, N.Name):
         return "null" if e.value == "None" else e.value
+    if isinstance(e, N.CapCall):
+        return _gen_capcall(e)
     if isinstance(e, N.Call):
         return f"{e.func}({', '.join(_gen_expr(a) for a in e.args)})"
     if isinstance(e, N.Attr):

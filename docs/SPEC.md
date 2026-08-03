@@ -342,16 +342,16 @@ is `undeclared-capability`; an unknown capability name is `unknown-capability`.
 **Declarable capabilities:** `database`, `http`, `email`, `files`, `time`,
 `crypto`, `random`.
 
-**Verbs implemented today** (all Python-only; the TypeScript backend raises
-`NotImplementedError` on a capability program — see §12):
+**Verbs implemented today** (on BOTH backends; the TypeScript backend emits the
+same adapter calls against the reference `pedro_capabilities.ts`):
 
-| Pedro | Capability | Python |
-|---|---|---|
-| `table t: Row` | database | `t = database.table("t", Row)` |
-| `insert into t { … }` | database | `t.insert({ … })` → returns new id |
-| `hash x` | crypto | `crypto.hash(x)` |
-| `verify x against h` | crypto | `crypto.verify(x, h)` → `flag` |
-| `send email to a with subject s body b` | email | `mailer.send(to=a, subject=s, body=b)` |
+| Pedro | Capability | Python | TypeScript |
+|---|---|---|---|
+| `table t: Row` | database | `t = database.table("t", Row)` | `const t = database.table("t")` |
+| `insert into t { … }` | database | `t.insert({ … })` → returns new id | `t.insert({ … })` |
+| `hash x` | crypto | `crypto.hash(x)` | `crypto.hash(x)` |
+| `verify x against h` | crypto | `crypto.verify(x, h)` → `flag` | `crypto.verify(x, h)` |
+| `send email to a with subject s body b` | email | `mailer.send(to=a, subject=s, body=b)` | `mailer.send(a, s, b)` |
 | `given t is empty` (expect only) | database | `t.clear()` |
 
 A `table` handle is iterable, so reads reuse the ordinary collection path
@@ -396,7 +396,7 @@ Translation of expect items:
 | `e` | `assert e` | `if (!(e)) throw new Error(…);` |
 | `e fails with "m"` | `try: … except PedroError: assert str(e)=="m"` | `try/catch` on `PedroError.message` |
 | `given x = e` | `x = e` | `const x = e;` |
-| `given t is empty` | `t.clear()` | (Python-only capability) |
+| `given t is empty` | `t.clear()` | `t.clear();` |
 | `for all n from a to b: e` | `for n in range(a, (b)+1): assert (e), "counterexample: …"` | counted `for` loop throwing on first counterexample |
 
 `check --json` reports `ok` (no errors, no holes, all expectations passed),
@@ -467,10 +467,8 @@ on these; write the signature plus an `expect:` block and leave a
 
 - **Capability verbs:** database `update`/`delete`; `http get`/`http post`;
   files `read file`/`write … to file`; time `now`/`today`; random
-  `random whole from … to …`.
-- **The TypeScript adapter path:** any program that declares a capability is
-  Python-only; the TypeScript backend raises rather than emit a broken adapter, and
-  the differential/`--targets` lanes report the TypeScript lane as `skipped`.
+  `random whole from … to …`. (The implemented verbs — `insert`, `send`, `hash`,
+  `verify` — emit on **both** backends.)
 - **Language surface:** modules (`use "file.pedro"`), the `raw <lang>: … end raw`
   escape hatch, loop `stop`/`skip`, keyed/descending `sort`
   (`sort xs by key descending`), the `<T>?` optional shorthand, and the predicates

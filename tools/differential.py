@@ -70,10 +70,6 @@ def run(verbose=False):
             if verbose:
                 print(f"[py  ] {name} — {len(py['expectations'])} expectations (TS pending)")
             continue
-        if "use capability" in source:  # capabilities are Python-only for now
-            if verbose:
-                print(f"[py  ] {name} — {len(py['expectations'])} expectations (TS skipped: capabilities)")
-            continue
         ts = run_typescript(source, filename=os.path.basename(path))
         if not ts["ran"]:
             continue

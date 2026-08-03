@@ -47,15 +47,15 @@ structured feedback — so the language must stay small, regular, and verifiable
   uses the `database` + `crypto` capabilities).
 - `examples/math.pedro` — integer algorithms. `examples/order_total.pedro`
   (a `record`) and `examples/signup.pedro` (database/email/crypto capabilities via
-  the adapter layer) both compile and are in the corpus (signup is Python-only —
-  the TS backend can't emit adapters yet).
+  the adapter layer) both compile and are in the corpus, green on BOTH backends
+  (the TS adapter path emits against the reference `pedro_capabilities.ts`).
 - `tools/regress.py` — compiles and RUNS the whole corpus (this is CI). Also runs
   a small fuzz smoke by default; `--fuzz`/`--diff`/`--slow` run the full sweeps.
 - `tools/backends.py` — per-backend "run + report expectations" adapter (Python via
   `check`; TypeScript via `node`, gated by `ts_available()`).
 - `tools/differential.py` — runs each corpus program on every available backend and
   asserts they agree (live cross-backend diff; the TS lane runs whenever `node` is on
-  PATH — capability programs are Python-only until the TS adapter path lands).
+  PATH — including capability programs, via the `pedro_capabilities.ts` adapter).
 - `tools/fuzz.py` — seedable grammar fuzzer with a reference oracle; generates valid
   self-checking Pedro and asserts every backend agrees.
 - `tools/eval/` — the **LLM-authoring benchmark** (makes the "go-to language for LLMs"
@@ -210,9 +210,10 @@ drift (output hand-edited) — `pedroc/hashing.py` + `pedroc/verify.py`.
 
 **Designed but NOT yet in the compiler** (see `WORKLOG.md` roadmap, highest first):
 the remaining capability verbs (db `update`/`delete`, `http`, `files`, `time`,
-`random`) and the TypeScript adapter path. The `WORKLOG.md` roadmap section is the
+`random`) and modules (`use "file.pedro"`). The `WORKLOG.md` roadmap section is the
 source of truth for what to build next. (The TypeScript backend, `record`/`enum`
-types, the **capability/adapter layer**, and the first-class cross-target agreement
+types, the **capability/adapter layer on BOTH backends** (incl. the TS adapter path
+→ `pedro_capabilities.ts`), and the first-class cross-target agreement
 check — `check --targets` — have all **landed**: `pedroc/codegen_ts.py`,
-`pedroc/annotate.py`, `pedroc/capabilities.py` + `pedroc/adapters.py`, and
-`check_targets` in `pedroc/check.py`.)
+`pedroc/annotate.py`, `pedroc/capabilities.py` + `pedroc/adapters.py` +
+`pedro_capabilities.ts`, and `check_targets` in `pedroc/check.py`.)

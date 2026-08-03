@@ -34,13 +34,6 @@ def corpus():
     return files
 
 
-def _declares_capabilities(path):
-    """Capability programs are Python-only for now (the TS backend can't emit the
-    adapter layer yet), so the TypeScript lane skips them — see WORKLOG."""
-    with open(path, "r", encoding="utf-8") as f:
-        return "use capability" in f.read()
-
-
 def main(argv=None):
     ap = argparse.ArgumentParser(description="pedroc regression suite")
     ap.add_argument("--diff", action="store_true", help="run the cross-backend differential tester")
@@ -77,8 +70,7 @@ def main(argv=None):
     from tools.backends import run_typescript, ts_available
     print()
     if ts_available():
-        ts_files = [p for p in corpus() if not _declares_capabilities(p)]
-        skipped = len(corpus()) - len(ts_files)
+        ts_files = corpus()
         ts_ok = 0
         for path in ts_files:
             with open(path, "r", encoding="utf-8") as f:
@@ -90,9 +82,8 @@ def main(argv=None):
             else:
                 all_ok = False
                 print(f"[FAIL] {name} — typescript lane: {res.get('error')}")
-        note = f" ({skipped} capability program(s) Python-only, skipped)" if skipped else ""
         print(f"\n{'PASS' if ts_ok == len(ts_files) else 'FAIL'}: "
-              f"{ts_ok}/{len(ts_files)} corpus programs green on the TypeScript backend{note}")
+              f"{ts_ok}/{len(ts_files)} corpus programs green on the TypeScript backend")
     else:
         print("SKIP: TypeScript lane (node not on PATH)")
 

@@ -5,6 +5,60 @@ resume cleanly across sessions.
 
 ---
 
+## 2026-08-03 — TypeScript adapter path LANDED (capability programs now run on BOTH backends)
+
+Closed the last "Python-only" gap. The TypeScript backend used to raise
+`NotImplementedError` on any program that declared a capability, so `signup.pedro`
+and `credentials.pedro` ran on Python alone. Now they compile to TypeScript and run
+green under `node`, routed through a reference `pedro_capabilities.ts` adapter — the
+mirror of the Python `pedro_capabilities.py` layer.
+
+**What landed.**
+- **`pedro_capabilities.ts`** (new, repo root) — self-contained reference TS
+  adapters, the mirror of `pedroc/adapters.py`: `Database` (a `table` is a plain
+  array augmented with `.insert`/`.clear`, so `find`→`.find`, `count of`→`.length`,
+  `for each`→`.entries()` all work unchanged), `Crypto` (`hash`/`verify` via
+  `node:crypto` sha256), `Mailer` (`send` → outbox). A real project swaps this file,
+  exposing the same names.
+- **`pedroc/codegen_ts.py`** — dropped the `NotImplementedError` guard; emits the
+  capability import (`import { database, email as mailer, crypto } from
+  "./pedro_capabilities.ts"`, aliasing to dodge user-identifier collisions exactly
+  like the Python backend), table bindings (`const users = database.table("users")`),
+  `N.CapCall` in `_gen_expr` (`insert`/`hash`/`verify`/`send`), and the `given-empty`
+  expect item (`users.clear()`).
+- **`tools/backends.py`** `run_typescript` — writes the generated program into a temp
+  DIRECTORY and copies `pedro_capabilities.ts` alongside it (when the output imports
+  it) so the relative `.ts` import resolves. Node v24+ strips types, so no build step.
+- **`pedroc/check.py`** `check_targets` — removed the capability short-circuit; the TS
+  lane now runs capability programs and is cross-checked like any other program.
+- **`tools/regress.py`** + **`tools/differential.py`** — no longer skip capability
+  programs on the TS lane.
+
+**Semantics note (why cross-backend agreement holds).** The TS crypto does NOT
+byte-match Python's SHA256, and it needn't: the `expect` blocks compare hash/verify
+ROUND-TRIPS and `is present`, never raw hash values, so an independent TS hash impl
+still agrees expectation-for-expectation.
+
+**Verified.** `python3 tools/regress.py` GREEN — corpus 117 expectations, **TS lane
+16 → 18/18** (now incl. `signup` + `credentials`), 45/45 diagnostics (updated the
+old `test_check_targets_single_lane_is_vacuously_ok` → `..._agrees_on_a_capability_
+program`), packaging/verify/sandbox/eval all green, fuzz clean, doc-drift clean.
+`tools/differential.py -v` PASS — both capability programs agree across python+
+typescript. `pedroc check <both> --targets python,typescript` reports "all targets
+agree". Built + ran each capability program by hand under `node`.
+
+**Docs.** README (status line, adapter section, `--targets` section, coverage +
+roadmap — retired every "Python-only"/"TS adapter path next" caveat),
+`docs/language-card.md`, `docs/SPEC.md` (verb translation table now has a TypeScript
+column; `given t is empty` row; not-yet-implemented section trimmed), and CLAUDE.md.
+
+**Next:** unchanged roadmap — the remaining capability verbs (db `update`/`delete`,
+`http`/`files`/`time`/`random`) and modules (`use "file.pedro"`). Two smaller
+ergonomic gaps still noted below: no `set m[i][j]`/`set list[i]`; no char-code
+conversion.
+
+---
+
 ## 2026-08-02 — Cookbook grown by 11 classic algorithms (all green on BOTH backends)
 
 Broadened the teaching corpus so the authoring LLM sees more idiomatic Pedro. Added

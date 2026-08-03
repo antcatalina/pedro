@@ -77,13 +77,21 @@ def ts_available():
     return True
 
 
+# The reference TS adapter module (`pedro_capabilities.ts`), written next to a
+# capability program's temp file so its `import "./pedro_capabilities.ts"` resolves
+# — the TypeScript mirror of `pedroc.check._adapters_source()`.
+_TS_ADAPTERS = os.path.join(ROOT, "pedro_capabilities.ts")
+
+
 def run_typescript(source, filename="<fuzz>", timeout=10.0):
     """Compile to TypeScript and run it with `node`, returning the normalized shape.
 
     Returns a `ran: False` result when the backend isn't available. The generated
     program prints one JSON record per expectation (planned `codegen_ts` contract);
     if a future backend instead throws on the first failure, this still reports a
-    coarse pass/fail from the process exit + stderr."""
+    coarse pass/fail from the process exit + stderr. A capability program's output
+    imports `./pedro_capabilities.ts`, so the reference adapter is written alongside
+    it in the temp directory."""
     if not ts_available():
         return {"ran": False, "status": None, "ok": False, "expectations": [],
                 "error": "typescript backend unavailable"}
@@ -93,19 +101,19 @@ def run_typescript(source, filename="<fuzz>", timeout=10.0):
         return {"ran": True, "status": "error", "ok": False, "expectations": [],
                 "error": f"ts compile: {e}"}
 
-    with tempfile.NamedTemporaryFile("w", suffix=".ts", delete=False, encoding="utf-8") as f:
+    tmpdir = tempfile.mkdtemp(prefix="pedro-ts-")
+    path = os.path.join(tmpdir, "program.ts")
+    with open(path, "w", encoding="utf-8") as f:
         f.write(ts)
-        path = f.name
+    if "pedro_capabilities.ts" in ts:
+        shutil.copyfile(_TS_ADAPTERS, os.path.join(tmpdir, "pedro_capabilities.ts"))
     try:
         proc = subprocess.run(["node", path], capture_output=True, text=True, timeout=timeout)
     except subprocess.TimeoutExpired:
         return {"ran": True, "status": "timeout", "ok": False, "expectations": [],
                 "error": "ts execution timed out"}
     finally:
-        try:
-            os.unlink(path)
-        except OSError:
-            pass
+        shutil.rmtree(tmpdir, ignore_errors=True)
 
     expectations, parsed = _parse_ts_records(proc.stdout)
     if parsed:

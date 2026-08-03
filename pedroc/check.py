@@ -230,9 +230,10 @@ def check_targets(source, filename="<pedro>", targets=("python", "typescript"),
     got — a compiler bug report, treated with the same rigor as a check failure.
 
     Reuses `tools/backends.py`'s per-backend run/report adapter (the same runners
-    the differential tester and fuzzer trust) rather than duplicating it. A
-    capability program runs Python-only for now (the TS backend has no adapter path
-    yet); the TypeScript lane is reported as `skipped` for it, not a disagreement.
+    the differential tester and fuzzer trust) rather than duplicating it. Capability
+    programs now run on BOTH backends (the TS lane writes the reference
+    `pedro_capabilities.ts` adapter next to the generated program), so they are
+    diffed cross-target like any other program.
     """
     # Lazy import: `tools.backends` imports `pedroc.check` at module load, so a
     # top-level import here would be circular. Add the repo root to `sys.path` so
@@ -273,17 +274,11 @@ def check_targets(source, filename="<pedro>", targets=("python", "typescript"),
                                     "expectations": [], "error": base["summary"]}
         return report
 
-    has_caps = bool(base["capabilities"])
     for t in targets:
         if t == "python":
             report["results"]["python"] = _normalize(base)
         elif t == "typescript":
-            if has_caps:
-                report["results"]["typescript"] = {
-                    "ran": False, "status": "skipped", "ok": True, "expectations": [],
-                    "error": None,
-                    "skipped": "capabilities are Python-only in the TypeScript backend"}
-            elif not ts_available():
+            if not ts_available():
                 report["results"]["typescript"] = {
                     "ran": False, "status": "unavailable", "ok": False, "expectations": [],
                     "error": "the TypeScript backend requires `node` on PATH"}

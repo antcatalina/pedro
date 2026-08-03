@@ -389,14 +389,18 @@ def test_check_targets_agrees_on_a_clean_program():
         assert report["ok"], report["summary"]
 
 
-def test_check_targets_single_lane_is_vacuously_ok():
-    # A capability program is Python-only, so the TS lane is skipped, not failed.
-    report = check_targets(_read_signup(), filename="<test>",
+def test_check_targets_agrees_on_a_capability_program():
+    # A capability program now runs on BOTH backends (the TS lane writes the
+    # reference `pedro_capabilities.ts` adapter next to the generated program), so
+    # the two targets are cross-checked like any other program.
+    report = check_targets(_read_signup(), filename="signup.pedro",
                            targets=("python", "typescript"))
-    assert report["agree"] is not False
+    assert report["agree"] is not False, report["summary"]
     assert report["disagreements"] == []
-    assert report["results"]["typescript"]["ran"] is False
-    assert report["ok"]
+    assert report["results"]["python"]["ok"]
+    # If node is on PATH, the TS lane ran the adapter path green too.
+    if report["results"]["typescript"]["ran"]:
+        assert report["ok"], report["summary"]
 
 
 def test_diff_targets_flags_per_expectation_disagreement():

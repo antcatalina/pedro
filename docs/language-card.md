@@ -62,9 +62,9 @@ To verify a program behaves **identically on every backend**, run
 runs each target's `expect` suite and reports whether all targets agree on every
 expectation. `ok` is true only when they do; a disagreement names which targets
 differed on which expectation and what each got (that's a compiler bug, not yours).
-A single `--targets python` behaves exactly like a plain `check`. (Capability
-programs are Python-only for now, so the TypeScript lane is `skipped`, not a
-disagreement.)
+A single `--targets python` behaves exactly like a plain `check`. Capability
+programs run on **both** backends too — the TypeScript lane emits the same adapter
+calls against a reference `pedro_capabilities.ts`.
 
 ## Program shape
 
@@ -267,8 +267,8 @@ not change what you author.
 
 These capability verbs are declared-but-not-yet-emitted: database `update`/`delete`,
 `http get`/`http post`, files `read file`/`write … to file`, `now`/`today` (time),
-`random whole from … to …` (random) — and the TypeScript backend can't emit the
-adapter layer yet, so a capability program is Python-only. Also: modules
+`random whole from … to …` (random). (The implemented verbs — `insert`, `send`,
+`hash`, `verify` — now emit on **both** backends.) Also: modules
 (`use "file.pedro"`), the `raw <lang>: … end raw` escape hatch, loop `stop`/`skip`,
 keyed/descending `sort`, and the predicates `is a valid email` / `is a valid url` /
 `is even` / `is odd`. If the task needs one of these: write the task signature and
