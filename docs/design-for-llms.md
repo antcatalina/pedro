@@ -53,9 +53,9 @@ The honest answer starts with a concession: **readability is not Pedro's advanta
 
 3. **Regularity over synonyms.** LLMs latch onto patterns; irregular languages induce hallucination. We allow a *small* set of readable aliases (each mapping to one canonical form), but we resist proliferating them. The model is taught to emit the **canonical form**; humans may use the sugar.
 
-4. **Errors are prompts.** Compiler diagnostics are consumed by the model, not just humans. `pedroc` will offer a structured error mode (line, code, message, hint, suggestion) so a model can self-correct mechanically instead of re-reasoning from scratch.
+4. **Errors are prompts.** Compiler diagnostics are consumed by the model, not just humans. `pedroc` offers a structured error mode (line, code, message, hint, suggestion) via `pedroc check --json` so a model can self-correct mechanically instead of re-reasoning from scratch.
 
-5. **First-class uncertainty (typed holes).** When the model doesn't know something, it should be able to say so instead of guessing. A planned `todo "<why>"` hole compiles to an "unresolved intent" report rather than fake code — making hallucination *visible and safe*, and giving the human (or the authoring LLM) an exact list of what to fill in.
+5. **First-class uncertainty (typed holes).** When the model doesn't know something, it should be able to say so instead of guessing. A `todo "<why>"` hole compiles to an "unresolved intent" report rather than fake code — making hallucination *visible and safe*, and giving the human (or the authoring LLM) an exact list of what to fill in.
 
 6. **`expect` blocks are the model's built-in grader.** They turn intent into an executable contract. The standard authoring loop *requires* the model to write expectations, which are then run automatically. This is a self-test the model designs and the compiler enforces.
 
@@ -64,7 +64,7 @@ The honest answer starts with a concession: **readability is not Pedro's advanta
 ## What this changes about earlier framing
 
 - **"Claude is the compiler" is retired.** Claude is now the **authoring layer** (English → Pedro, error explanation, filling holes). `pedroc` is the compiler.
-- **The 9-rule "compiler contract"** in the README is being re-scoped: rules about idiomatic output, canonical translation, and determinism become **`pedroc` guarantees**; rules about resolving ambiguity and not inventing capabilities become **authoring-layer guidelines** for Claude writing Pedro. This will be reconciled when `docs/SPEC.md` is written.
+- **The 9-rule "compiler contract"** in the README is re-scoped: rules about idiomatic output, canonical translation, and determinism are **`pedroc` guarantees**; rules about resolving ambiguity and not inventing capabilities are **authoring-layer guidelines** for Claude writing Pedro. This is reconciled in `docs/SPEC.md`.
 
 ## Roadmap
 
@@ -72,13 +72,17 @@ The honest answer starts with a concession: **readability is not Pedro's advanta
 - Language design, README language guide, `docs/cookbook.md` (22 verified algorithms).
 - `pedroc`: a real, deterministic compiler (lexer → parser → codegen) for the integer subset — `task`, types, `let`/reassign, `increase/decrease`, `when`/`otherwise`, `while`, `repeat`, arithmetic + readable comparisons, recursion, and `expect` → runnable Python tests. Output proven deterministic (byte-identical across runs) and correct (passes its expectations).
 
-**Next**
-1. **Grow the compiler's coverage** toward the cookbook: lists, maps, records, `for each`, string ops, and the collection operations. Target: `pedroc` compiles the whole cookbook, and the existing `build/cookbook_check.py` becomes the compiler's regression suite.
-2. **`pedroc check --json`** — structured diagnostics for the agent loop (errors, types, unresolved holes, expect results).
-3. **Typed holes** (`todo "<why>"`) — first-class uncertainty.
-4. **Capabilities + the adapter layer** in the compiler (database/http/email/…), so effectful programs compile too.
-5. **A second target** (TypeScript) to prove retargeting from one source.
-6. **The authoring skill** — a Claude Code skill for English → Pedro that runs `pedroc` in the loop and self-corrects from its errors.
+**Shipped since v0.1** (all of the original "Next" list has landed — see [WORKLOG.md](../WORKLOG.md) for dates)
+1. **Compiler coverage** grew to the whole cookbook: lists, maps, `record`/`enum`, `for each`, string ops, and the collection operations. `tools/regress.py` compiles *and runs* the corpus as the regression suite.
+2. **`pedroc check --json`** — structured diagnostics for the agent loop (line/col, stable codes, hints, `did you mean X?`, unresolved holes, per-expectation results).
+3. **Typed holes** (`todo "<why>"`) — first-class uncertainty; compiles to an unresolved-intent report.
+4. **Capabilities + the adapter layer** in the compiler (`database`/`email`/`crypto`/`files`), enforced and surface-reported, on **both** backends via swappable reference adapters.
+5. **A second target** (TypeScript) — one source, two backends, cross-checked by `check --targets` and `tools/differential.py`.
+6. **The authoring skill** — `skills/write-pedro/`, a Claude Code skill for English → Pedro that runs `pedroc` in the loop and self-corrects from its errors.
+
+**Next** (see WORKLOG.md roadmap for the authoritative, prioritized list)
+- The remaining capability verbs — `http` (`http get`/`http post`), `time` (`now`/`today`), `random` (`random whole from … to …`); `time`/`random` must be built deterministic (fixed clock / seeded RNG) to preserve `check` reproducibility.
+- Modules (`use "file.pedro"`).
 7. **`docs/SPEC.md`** — the normative spec, reconciled with everything above.
 
 ## The one-line summary

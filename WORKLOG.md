@@ -5,6 +5,46 @@ resume cleanly across sessions.
 
 ---
 
+## 2026-08-04 — Docs-accuracy audit: fixed stale `design-for-llms.md` (recurring backstop job)
+
+Ran the recurring documentation-accuracy job. Extracted the real compiler surface
+(`parser.py` `kw == …` / `_is_name(…)` branches + `codegen_python.py` builtins) and
+cross-referenced README, `docs/language-card.md`, `docs/SPEC.md`, CLAUDE's coverage
+section, and WORKLOG's roadmap against it — **not against each other**. Also
+spot-checked by compiling the README's worked examples and diffing byte-for-byte.
+
+**Byte-identical spot-checks (all PASS).** `examples/cookbook/recover.pedro`
+(source-hash `a60170503b5a`), `examples/order_total.pedro` (`0cf9be17abef`, Python
+*and* TypeScript), and the `greet` snippet all compile to exactly what the README
+shows — banners, bodies, and hashes match.
+
+**Accurate today:** `docs/language-card.md`'s "NOT yet supported" section correctly
+lists `http`/`time`/`random`, modules, the `raw` escape hatch, loop `stop`/`skip`,
+keyed/descending `sort`, and the `is even`/`is odd`/`is a valid email`/`is a valid
+url` predicates — all genuinely absent from the parser. `docs/SPEC.md` §12 matches.
+README's 🧭 tags are all correct. `tools/check_docs.py` clean.
+
+**Drift found and fixed — `docs/design-for-llms.md`** (a "deeper reading" doc the
+mechanical `check_docs.py` doesn't scan, which is exactly why the manual pass still
+matters). It still described **shipped** features in planned/future tense:
+- Principle 5 called the `todo "<why>"` hole "**planned**" — it's implemented
+  (compiles to `raise NotImplementedError("unresolved Pedro hole: …")`). Now present tense.
+- Principle 4 said `pedroc` "**will** offer a structured error mode" — `check --json`
+  ships it. Now present tense, with the `check --json` reference.
+- "What this changes" said the contract "will be reconciled **when** `docs/SPEC.md`
+  is written" — SPEC.md exists (479 lines). Fixed to present tense.
+- The **Roadmap "Next" list** listed six items as upcoming that have ALL since
+  landed (cookbook-wide coverage, `check --json`, typed holes, capabilities+adapters,
+  the TypeScript target, the `write-pedro` skill). Rewrote as a "Shipped since v0.1"
+  list and gave a fresh, accurate "Next" (the `http`/`time`/`random` verbs — with the
+  determinism-seeding gotcha — and modules), pointing at WORKLOG as authoritative.
+
+This is the same *feature-listed-as-not-real* bug class the 2026-07-28 audit targets,
+in the "real construct marked unsupported" direction. **Docs-only, no compiler
+change.** `python3 tools/regress.py` GREEN (exit 0), `check_docs.py` clean.
+
+---
+
 ## 2026-08-04 — CI workflow hardened (least-privilege + timeouts)
 
 The **machine-independent GitHub Actions CI** (`.github/workflows/regress.yml`,
