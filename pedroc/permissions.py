@@ -33,7 +33,8 @@ CAPABILITY_RULES = {
     "database": ["Bash(psql:*)"],
     # sending mail via the mail transfer agent
     "email": ["Bash(sendmail:*)"],
-    # filesystem access (scoped to declared paths once the `files` verb lands)
+    # filesystem access (the `files` verb reads/writes paths at runtime, so the
+    # grant is not statically path-scoped — a real policy could tighten this)
     "files": ["Read", "Write", "Edit"],
     # local-only computation — no external permission needed
     "time": [],

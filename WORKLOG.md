@@ -5,6 +5,42 @@ resume cleanly across sessions.
 
 ---
 
+## 2026-08-04 — `pedroc permissions` bridge: advanced (files-only coverage + stale comment)
+
+The `capability-permission-bridge` job (`pedroc permissions <file>.pedro
+[--format claude-settings|json]`) had already **fully landed** in a prior run —
+`pedroc/permissions.py` (the `CAPABILITY_RULES` mapping table + `render`), the
+`_cmd_permissions` CLI handler in `__main__.py`, five diagnostic tests, and the
+README "Built for agent-heavy teams" mapping table are all present and green.
+Per the branch "advance it" rule I strengthened it rather than redoing it:
+
+- **Stale comment fixed** (`pedroc/permissions.py`). The `files` row's comment
+  said "scoped to declared paths once the `files` verb lands" — but the `files`
+  verb LANDED 2026-08-03. Paths are runtime `write … to file <path>` / `read
+  file <path>` arguments, not static, so the grant is intentionally not
+  path-scoped; the comment now says so (a real policy could tighten it). No
+  behavior change (`files` → `Read`/`Write`/`Edit` unchanged).
+- **Reverse-direction guarantee test** (`tests/test_diagnostics.py`, now 51/51).
+  The existing tests proved undeclared `http`/`files` never leak from
+  signup.pedro (declares database/email/crypto). Added
+  `test_permissions_files_only_program_grants_only_filesystem` over the real
+  cookbook `examples/cookbook/journal.pedro` (declares ONLY `files`): asserts the
+  manifest is exactly `["Read","Write","Edit"]` and that NONE of
+  `http`/`database`/`email`'s rules appear — the "undeclared never appears"
+  guarantee in the other direction, on a different capability.
+
+**Verified.** `python3 tools/regress.py` GREEN end-to-end (exit 0 — full corpus
+on python+typescript, TS lane, **51/51** diagnostics, sandbox/packaging/verify,
+eval self-test, fuzz, doc-drift clean). `pedroc permissions examples/signup.pedro`
+→ `["Bash(psql:*)","Bash(sendmail:*)"]`; `examples/cookbook/journal.pedro` →
+`["Read","Write","Edit"]`; both `--format json` breakdowns correct.
+
+**Next:** unchanged roadmap — the remaining capability verbs (`http`/`time`/
+`random`) and modules (`use "file.pedro"`). When `http` lands, add its
+`WebFetch`/`Bash(curl:*)` grant to a corpus example and cover it here too.
+
+---
+
 ## 2026-08-03 — `files` capability LANDED (`read file` / `write … to file`, BOTH backends)
 
 The `files` capability now emits on Python AND TypeScript, routed through a swappable

@@ -375,6 +375,10 @@ _SIGNUP = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
     "examples", "signup.pedro",
 )
+_JOURNAL = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+    "examples", "cookbook", "journal.pedro",
+)
 
 
 def _read_signup():
@@ -425,6 +429,20 @@ def test_permissions_rejects_unknown_format():
         assert False, "expected an unknown-format error"
     except ValueError as e:
         assert "yaml" in str(e)
+
+
+def test_permissions_files_only_program_grants_only_filesystem():
+    # The reverse direction of the "undeclared never appears" guarantee: a
+    # program that declares ONLY `files` gets exactly the filesystem grant, and
+    # NONE of the network/database/email rules leak in.
+    with open(_JOURNAL, "r", encoding="utf-8") as f:
+        src = f.read()
+    surface, rules = permission_manifest(src, filename="journal.pedro")
+    assert surface == ["files"]
+    assert rules == ["Read", "Write", "Edit"]
+    for cap in ("http", "database", "email"):
+        for rule in CAPABILITY_RULES[cap]:
+            assert rule not in rules, f"{rule!r} leaked from undeclared {cap}"
 
 
 # --- the suggestion engine itself -------------------------------------------
