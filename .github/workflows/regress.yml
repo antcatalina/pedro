@@ -11,9 +11,23 @@ on:
     branches: [agent/dev, master]
   pull_request:
 
+# Least privilege: this job only reads the repo to run the suite; it never
+# writes back, comments, or touches other resources.
+permissions:
+  contents: read
+
+# Don't let a superseded push keep an old run burning minutes: a newer commit
+# on the same ref cancels the in-flight run.
+concurrency:
+  group: regress-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   regress:
     runs-on: ubuntu-latest
+    # A green run is well under a minute; a hung/non-terminating regress.py must
+    # not sit on a runner. This caps the blast radius without masking failures.
+    timeout-minutes: 15
     steps:
       - name: Check out repository
         uses: actions/checkout@v4

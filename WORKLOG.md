@@ -5,6 +5,36 @@ resume cleanly across sessions.
 
 ---
 
+## 2026-08-04 — CI workflow hardened (least-privilege + timeouts)
+
+The **machine-independent GitHub Actions CI** (`.github/workflows/regress.yml`,
+landed 2026-07-29) already existed, green, with the README badge and the
+"authoritative signal" note in place — so per the branch "advance it, don't redo
+it" rule I hardened the job rather than recreating it. The pipeline commands are
+UNCHANGED (still `pip install -e .` + `python tools/regress.py`, mirroring exactly
+what AntMac's cron runs — no divergent pipeline), so a green check here still means
+the same thing a local CI pass means. What changed is the job's blast radius:
+
+- **`permissions: contents: read`** — least privilege; the job only reads the
+  repo to run the suite, never writes back / comments / touches other resources.
+- **`concurrency` group (`cancel-in-progress`)** — a newer push on the same ref
+  cancels the in-flight run instead of queueing a stale one.
+- **`timeout-minutes: 15`** on the job — a green run is well under a minute; a
+  hung or non-terminating `regress.py` can no longer sit on a runner burning
+  minutes. This caps the blast radius WITHOUT masking failures (a non-zero
+  regress.py still fails the check — no `continue-on-error`, no allowed failures).
+
+Validated by parsing the workflow with PyYAML (`YAML PARSES OK`, 5 steps, perms
+and timeout present) and re-running `python3 tools/regress.py` GREEN locally. As
+before, live GitHub Actions verification happens on the next real push from this
+branch; the workflow is correct by inspection here in the sandbox.
+
+**Authoritative signal, unchanged:** the `regress` workflow remains the
+machine-independent source of truth for whether a branch is green; AntMac's cron
+is a convenience/build engine on top of it, not the source of truth.
+
+---
+
 ## 2026-08-04 — `pedroc permissions` bridge: advanced (files-only coverage + stale comment)
 
 The `capability-permission-bridge` job (`pedroc permissions <file>.pedro
